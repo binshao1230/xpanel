@@ -13,9 +13,19 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func readJSON(r *http.Request, dst any) error {
 	defer r.Body.Close()
+	if r.Body == nil || r.ContentLength == 0 {
+		return nil
+	}
 	dec := json.NewDecoder(r.Body)
-	// allow extra fields so UI/API evolution does not break clients
-	return dec.Decode(dst)
+	err := dec.Decode(dst)
+	if err == nil {
+		return nil
+	}
+	// empty body
+	if err.Error() == "EOF" {
+		return nil
+	}
+	return err
 }
 
 func cors(next http.Handler) http.Handler {

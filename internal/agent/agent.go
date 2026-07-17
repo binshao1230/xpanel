@@ -323,6 +323,9 @@ func (a *Agent) pullAndApply() error {
 	if err := a.writeCerts(certDir, bundle.Certs); err != nil {
 		return fmt.Errorf("write certs: %w", err)
 	}
+	if err := a.writeNginx(bundle.Nginx); err != nil {
+		log.Printf("write nginx: %v", err)
+	}
 
 	absCertDir, _ := filepath.Abs(certDir)
 	expanded := expandCertPlaceholders(bundle.XrayJSON, absCertDir)
@@ -358,6 +361,35 @@ func (a *Agent) pullAndApply() error {
 	a.lastApplyErr = ""
 	a.mu.Unlock()
 	return a.saveState()
+}
+
+func (a *Agent) writeNginx(files []protocol.NginxFile) error {
+	if len(files) == 0 {
+		return nil
+	}
+	dir := filepath.Join(a.cfg.DataDir, "nginx")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for _, f := range files {
+		name := f.Name
+		if name == "" {
+			name = "default"
+		}
+		// safe filename
+		name = strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+				return r
+			}
+			return '_'
+		}, name)
+		path := filepath.Join(dir, name+".conf")
+		if err := os.WriteFile(path, []byte(f.Content), 0o644); err != nil {
+			return err
+		}
+		log.Printf("wrote nginx draft %s", path)
+	}
+	return nil
 }
 
 func (a *Agent) writeCerts(certDir string, certs []protocol.CertFile) error {

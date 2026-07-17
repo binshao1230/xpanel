@@ -52,6 +52,12 @@ type CertFile struct {
 	KeyPEM  string `json:"key_pem"`
 }
 
+// NginxFile is optional nginx config draft pushed to agent.
+type NginxFile struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}
+
 // Config pull
 type ConfigBundle struct {
 	Version  int64          `json:"version"`
@@ -59,6 +65,7 @@ type ConfigBundle struct {
 	Checksum string         `json:"checksum"`
 	APIPort  int            `json:"api_port"`
 	Certs    []CertFile     `json:"certs,omitempty"`
+	Nginx    []NginxFile    `json:"nginx,omitempty"`
 }
 
 const (

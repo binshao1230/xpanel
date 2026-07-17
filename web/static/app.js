@@ -327,16 +327,26 @@ async function refreshInbounds() {
 }
 $("#btn-add-in").onclick = async () => {
   const cert_id = Number($("#in-cert").value) || 0;
-  await api("/api/inbounds", {
-    method: "POST",
-    body: JSON.stringify({
-      server_id: $("#in-server").value,
-      protocol: $("#in-proto").value,
-      port: Number($("#in-port").value),
-      tag: $("#in-tag").value.trim() || undefined,
-      cert_id, enable_tls: cert_id > 0,
-    }),
-  });
+  try {
+    const r = await api("/api/inbounds", {
+      method: "POST",
+      body: JSON.stringify({
+        server_id: $("#in-server").value,
+        protocol: $("#in-proto").value,
+        port: Number($("#in-port").value),
+        tag: $("#in-tag").value.trim() || undefined,
+        cert_id, enable_tls: cert_id > 0,
+      }),
+    });
+    let msg = "已创建入站 #" + r.id;
+    if (r.share_link) msg += "\n\n分享链接:\n" + r.share_link;
+    if (r.settings?.password) msg += "\n\nSS 密码: " + r.settings.password;
+    if (r.settings?.clients?.[0]?.password) msg += "\n\nTrojan 密码: " + r.settings.clients[0].password;
+    if (r.settings?.clients?.[0]?.id) msg += "\n\nUUID: " + r.settings.clients[0].id;
+    alert(msg);
+  } catch (e) {
+    alert(e.message);
+  }
   await refreshInbounds();
 };
 $("#btn-reality").onclick = async () => {

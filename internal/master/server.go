@@ -421,6 +421,10 @@ func (s *ServerApp) handleInstallCmd(w http.ResponseWriter, r *http.Request) {
 func (s *ServerApp) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	_, _ = s.db.Exec(`DELETE FROM inbounds WHERE server_id=?`, id)
+	_, _ = s.db.Exec(`DELETE FROM outbounds WHERE server_id=?`, id)
+	_, _ = s.db.Exec(`DELETE FROM route_rules WHERE server_id=?`, id)
+	_, _ = s.db.Exec(`DELETE FROM tunnels WHERE server_id=?`, id)
+	_, _ = s.db.Exec(`DELETE FROM nginx_configs WHERE server_id=?`, id)
 	res, err := s.db.Exec(`DELETE FROM servers WHERE id=?`, id)
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
@@ -487,7 +491,9 @@ func (s *ServerApp) handleCreateInbound(w http.ResponseWriter, r *http.Request) 
 	if body.Settings == nil {
 		body.Settings = map[string]any{}
 	}
-	if body.Protocol == "vless" || body.Protocol == "vmess" {
+	// fill usable defaults so UI one-click create always works
+	switch body.Protocol {
+	case "vless", "vmess":
 		cid := body.ClientID
 		if cid == "" {
 			cid = uuid.NewString()
@@ -500,22 +506,41 @@ func (s *ServerApp) handleCreateInbound(w http.ResponseWriter, r *http.Request) 
 				body.Settings["decryption"] = "none"
 			}
 		}
+	case "trojan":
+		if _, ok := body.Settings["clients"]; !ok {
+			pw := randomHex(8)
+			body.Settings["clients"] = []map[string]any{
+				{"password": pw, "email": "trojan@xpanel"},
+			}
+		}
+	case "shadowsocks", "ss":
+		if _, ok := body.Settings["method"]; !ok {
+			body.Settings["method"] = "aes-256-gcm"
+		}
+		if pw, _ := body.Settings["password"].(string); pw == "" {
+			body.Settings["password"] = randomHex(8)
+		}
+		if _, ok := body.Settings["network"]; !ok {
+			body.Settings["network"] = "tcp,udp"
+		}
 	}
 	if body.Stream == nil {
 		body.Stream = map[string]any{"network": "tcp"}
 	}
-	// bind TLS cert if requested
+	// bind TLS cert if requested — require real-looking PEM
 	if body.CertID > 0 || body.EnableTLS {
-		var domain string
+		var domain, certPEM string
 		if body.CertID > 0 {
-			_ = s.db.QueryRow(`SELECT domain FROM certificates WHERE id=? AND status='active' AND cert_pem!=''`, body.CertID).Scan(&domain)
+			_ = s.db.QueryRow(
+				`SELECT domain, cert_pem FROM certificates WHERE id=? AND status='active' AND cert_pem!='' AND key_pem!=''`,
+				body.CertID,
+			).Scan(&domain, &certPEM)
 		}
-		if domain != "" {
-			body.Stream = xraycfg.ApplyTLSFiles(body.Stream, domain)
-		} else if body.EnableTLS {
-			writeJSON(w, 400, map[string]string{"error": "cert_id required for enable_tls (active cert with PEM)"})
+		if domain == "" || !strings.Contains(certPEM, "BEGIN CERTIFICATE") {
+			writeJSON(w, 400, map[string]string{"error": "请选择有效证书（需含完整 PEM）。可先在「证书 ACME」申请或上传真实证书。"})
 			return
 		}
+		body.Stream = xraycfg.ApplyTLSFiles(body.Stream, domain)
 	}
 	sj, _ := json.Marshal(body.Settings)
 	st, _ := json.Marshal(body.Stream)
@@ -528,8 +553,22 @@ func (s *ServerApp) handleCreateInbound(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	id, _ := res.LastInsertId()
-	_, _ = s.db.Exec(`UPDATE servers SET config_version = config_version + 1 WHERE id=?`, body.ServerID)
-	writeJSON(w, 200, map[string]any{"id": id, "tag": body.Tag, "cert_id": body.CertID})
+	s.bumpServer(body.ServerID)
+	// build share link for immediate UI feedback
+	var ip, domain string
+	_ = s.db.QueryRow(`SELECT public_ip, COALESCE(domain,'') FROM servers WHERE id=?`, body.ServerID).Scan(&ip, &domain)
+	addr := domain
+	if addr == "" {
+		addr = ip
+	}
+	if addr == "" {
+		addr = "YOUR_IP"
+	}
+	link := buildShareLink(body.Protocol, body.Tag, addr, body.Port, string(sj), string(st))
+	writeJSON(w, 200, map[string]any{
+		"id": id, "tag": body.Tag, "cert_id": body.CertID,
+		"settings": body.Settings, "share_link": link,
+	})
 }
 
 func (s *ServerApp) handleDeleteInbound(w http.ResponseWriter, r *http.Request) {
@@ -748,13 +787,31 @@ func (s *ServerApp) buildConfigBundle(serverID string) (*protocol.ConfigBundle, 
 	if err != nil {
 		return nil, err
 	}
+	nginx := s.loadNginxForServer(serverID)
 	return &protocol.ConfigBundle{
 		Version:  ver,
 		XrayJSON: cfg,
 		Checksum: sum,
 		APIPort:  protocol.DefaultAPIPort,
 		Certs:    certs,
+		Nginx:    nginx,
 	}, nil
+}
+
+func (s *ServerApp) loadNginxForServer(serverID string) []protocol.NginxFile {
+	rows, err := s.db.Query(`SELECT name, content FROM nginx_configs WHERE server_id=? AND enabled=1`, serverID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var list []protocol.NginxFile
+	for rows.Next() {
+		var n, c string
+		if rows.Scan(&n, &c) == nil && c != "" {
+			list = append(list, protocol.NginxFile{Name: n, Content: c})
+		}
+	}
+	return list
 }
 
 func (s *ServerApp) loadCertsForServer(serverID string) ([]protocol.CertFile, map[int64]string, error) {
