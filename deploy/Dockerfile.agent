@@ -1,0 +1,33 @@
+# Build stage
+FROM golang:1.22-alpine AS build
+WORKDIR /src
+RUN apk add --no-cache git ca-certificates
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY . .
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/xpanel-agent ./cmd/agent
+
+# Fetch official Xray-core (linux amd64)
+FROM alpine:3.20 AS xray
+ARG XRAY_VERSION=25.3.6
+RUN apk add --no-cache curl unzip ca-certificates \
+ && curl -fsSL -o /tmp/xray.zip \
+      "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-64.zip" \
+ && unzip /tmp/xray.zip -d /tmp/xray \
+ && mv /tmp/xray/xray /out-xray \
+ && chmod +x /out-xray
+
+# Runtime
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+COPY --from=build /out/xpanel-agent /app/xpanel-agent
+COPY --from=xray /out-xray /usr/local/bin/xray
+RUN mkdir -p /data
+ENV MASTER_URL=http://xpanel-master:8080 \
+    INSTALL_TOKEN= \
+    DATA_DIR=/data \
+    XRAY_CONFIG=/data/xray.json \
+    XRAY_BIN=/usr/local/bin/xray
+VOLUME ["/data"]
+ENTRYPOINT ["/app/xpanel-agent"]

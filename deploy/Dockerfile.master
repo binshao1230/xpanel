@@ -1,0 +1,21 @@
+# Build stage
+FROM golang:1.22-alpine AS build
+WORKDIR /src
+RUN apk add --no-cache git ca-certificates
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY . .
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/xpanel-master ./cmd/master
+
+# Runtime
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+COPY --from=build /out/xpanel-master /app/xpanel-master
+RUN mkdir -p /app/data
+ENV ADDR=:8080 \
+    DATA_DIR=/app/data \
+    PUBLIC_URL=
+EXPOSE 8080
+VOLUME ["/app/data"]
+ENTRYPOINT ["/app/xpanel-master"]

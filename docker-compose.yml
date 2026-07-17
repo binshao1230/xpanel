@@ -1,0 +1,54 @@
+services:
+  master:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.master
+    image: xpanel-master:local
+    container_name: xpanel-master
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ADDR: ":8080"
+      DATA_DIR: /app/data
+      # 改成你的公网地址，安装命令/订阅链接会用到
+      PUBLIC_URL: "http://127.0.0.1:8080"
+      JWT_SECRET: "change-me-in-production"
+    volumes:
+      - ./data/master:/app/data
+
+  # 示例 Agent：先在面板添加服务器拿到 INSTALL_TOKEN 后填写
+  # agent:
+  #   build:
+  #     context: .
+  #     dockerfile: deploy/Dockerfile.agent
+  #   image: xpanel-agent:local
+  #   container_name: xpanel-agent
+  #   restart: unless-stopped
+  #   network_mode: host
+  #   environment:
+  #     MASTER_URL: "http://127.0.0.1:8080"
+  #     INSTALL_TOKEN: "paste-token-here"
+  #     DATA_DIR: /data
+  #     XRAY_CONFIG: /data/xray.json
+  #   volumes:
+  #     - ./data/agent:/data
+
+  # 一键联调：用 profile demo 启动假 agent（需已有 token 时改用真实 agent 服务）
+  agent-demo:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.agent
+    image: xpanel-agent:local
+    container_name: xpanel-agent-demo
+    restart: unless-stopped
+    profiles: ["agent"]
+    depends_on:
+      - master
+    environment:
+      MASTER_URL: "http://master:8080"
+      INSTALL_TOKEN: "${INSTALL_TOKEN:-}"
+      DATA_DIR: /data
+      XRAY_CONFIG: /data/xray.json
+    volumes:
+      - ./data/agent:/data
