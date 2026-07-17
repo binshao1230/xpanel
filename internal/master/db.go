@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS user_node_access (
 		`ALTER TABLE certificates ADD COLUMN auto_renew INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE certificates ADD COLUMN server_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE inbounds ADD COLUMN cert_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE servers ADD COLUMN agent_error TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, q := range alters {
 		_, _ = db.Exec(q)
@@ -189,6 +190,9 @@ CREATE TABLE IF NOT EXISTS user_node_access (
 	for _, q := range migrateV5SQL() {
 		_, _ = db.Exec(q)
 	}
+	// heal broken configs from earlier releases
+	_, _ = db.Exec(`UPDATE outbounds SET enabled=0 WHERE protocol='wireguard' AND settings_json LIKE '%REPLACE%'`)
+	_, _ = db.Exec(`UPDATE route_rules SET enabled=0 WHERE domain_json LIKE '%geosite:%' OR domain_json LIKE '%geoip:%'`)
 	return nil
 }
 

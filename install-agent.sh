@@ -125,6 +125,9 @@ install_xray() {
   command -v unzip >/dev/null 2>&1 || { apt-get update -y && apt-get install -y unzip; } 2>/dev/null || true
   unzip -qo "$tmp/xray.zip" -d "$tmp/out"
   install -m 0755 "$tmp/out/xray" "${INSTALL_DIR}/bin/xray"
+  # geo files if present in zip
+  [[ -f "$tmp/out/geoip.dat" ]] && install -m 0644 "$tmp/out/geoip.dat" "${INSTALL_DIR}/bin/geoip.dat"
+  [[ -f "$tmp/out/geosite.dat" ]] && install -m 0644 "$tmp/out/geosite.dat" "${INSTALL_DIR}/bin/geosite.dat"
   XRAY_BIN="${INSTALL_DIR}/bin/xray"
   rm -rf "$tmp"
   green "Xray 已安装: ${XRAY_BIN}"

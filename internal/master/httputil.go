@@ -14,7 +14,7 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 func readJSON(r *http.Request, dst any) error {
 	defer r.Body.Close()
 	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
+	// allow extra fields so UI/API evolution does not break clients
 	return dec.Decode(dst)
 }
 

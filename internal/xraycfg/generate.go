@@ -92,13 +92,8 @@ func Build(opts BuildOptions) (map[string]any, string, error) {
 		outList = append(outList, item)
 	}
 
-	rules := []map[string]any{
-		{
-			"type":        "field",
-			"outboundTag": "block",
-			"protocol":    []string{"bittorrent"},
-		},
-	}
+	// avoid geosite/geoip dependencies in default rules
+	rules := []map[string]any{}
 	if apiPort > 0 {
 		rules = append([]map[string]any{{
 			"type":        "field",

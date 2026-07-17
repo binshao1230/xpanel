@@ -523,7 +523,7 @@ func (s *ServerApp) handleQuickWARP(w http.ResponseWriter, r *http.Request) {
 	if body.Tag == "" {
 		body.Tag = "warp"
 	}
-	// WireGuard placeholder — user fills keys
+	// WireGuard placeholder — disabled until keys filled (enabled=0 prevents xray -test failure)
 	settings := map[string]any{
 		"secretKey": "REPLACE_WG_PRIVATE_KEY",
 		"address":   []string{"172.16.0.2/32"},
@@ -537,25 +537,28 @@ func (s *ServerApp) handleQuickWARP(w http.ResponseWriter, r *http.Request) {
 	}
 	sj, _ := json.Marshal(settings)
 	_, err := s.db.Exec(
-		`INSERT INTO outbounds(server_id,tag,protocol,settings_json,stream_json,enabled,created_at) VALUES(?,?,?,?,?,1,?)`,
+		`INSERT INTO outbounds(server_id,tag,protocol,settings_json,stream_json,enabled,created_at) VALUES(?,?,?,?,?,0,?)`,
 		body.ServerID, body.Tag, "wireguard", string(sj), "{}", nowUnix(),
 	)
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
-	// sample route: geosite:openai -> warp
-	dj, _ := json.Marshal([]string{"geosite:openai", "geosite:netflix"})
+	// domain rules without geosite.dat dependency
+	dj, _ := json.Marshal([]string{
+		"domain:openai.com", "domain:chatgpt.com", "domain:ai.com",
+		"domain:netflix.com", "domain:nflxvideo.net",
+	})
 	_, _ = s.db.Exec(
 		`INSERT INTO route_rules(server_id,name,outbound_tag,domain_json,ip_json,port,network,protocol_json,priority,enabled,created_at)
-		 VALUES(?,?,?,?,?,?,?,?,?,1,?)`,
+		 VALUES(?,?,?,?,?,?,?,?,?,0,?)`,
 		body.ServerID, "to-warp", body.Tag, string(dj), "[]", "", "", "[]", 50, nowUnix(),
 	)
-	s.bumpServer(body.ServerID)
+	// do not bump until user enables — avoids breaking live nodes
 	writeJSON(w, 200, map[string]any{
 		"ok":   true,
 		"tag":  body.Tag,
-		"note": "请编辑出站 wireguard settings 填入 WARP 私钥与 peer 公钥后下发",
+		"note": "WARP 出站与路由已创建但默认【未启用】。请填入 WireGuard 密钥后，在数据库/后续编辑中启用并下发。当前不会破坏现有 Xray 配置。",
 	})
 }
 

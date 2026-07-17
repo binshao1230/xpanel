@@ -75,10 +75,26 @@ async function enterMain() {
   $("#nav-user").textContent = me.user.username + " · " + me.user.role;
   const o = location.origin;
   const tok = me.user.subscribe_token;
-  $("#sub-url").textContent = o + "/sub/" + tok;
-  $("#sub-clash").textContent = o + "/sub/" + tok + "/clash";
-  $("#sub-singbox").textContent = o + "/sub/" + tok + "/singbox";
-  $("#sub-surge").textContent = o + "/sub/" + tok + "/surge";
+  const fill = (id, path) => {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = (path && path.startsWith("http") ? path : o + path);
+  };
+  fill("#sub-url", me.subscribe_url || ("/sub/" + tok));
+  fill("#sub-clash", me.subscribe_clash || ("/sub/" + tok + "/clash"));
+  fill("#sub-singbox", me.subscribe_singbox || ("/sub/" + tok + "/singbox"));
+  fill("#sub-surge", me.subscribe_surge || ("/sub/" + tok + "/surge"));
+  if (me.subscribe_short || me.short_code) {
+    // append short link into surge card area if present
+    const surge = $("#sub-surge");
+    if (surge) {
+      const short = me.subscribe_short?.startsWith("http")
+        ? me.subscribe_short
+        : o + "/s/" + (me.short_code || "");
+      surge.textContent = (me.subscribe_surge?.startsWith("http") ? me.subscribe_surge : o + "/sub/" + tok + "/surge") +
+        "\n短码: " + short;
+    }
+  }
   await refreshDash();
   switchTab("dash");
 }
@@ -200,7 +216,7 @@ async function refreshDash() {
   ].map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   drawChart(d.series || []);
 }
-$("#btn-refresh-dash").onclick = () => refreshDash();
+if ($("#btn-refresh-dash")) $("#btn-refresh-dash").onclick = () => refreshDash();
 
 async function fillServerSelects() {
   const data = await api("/api/servers");
@@ -248,6 +264,7 @@ async function refreshServers() {
       <div class="meta">${escapeHtml(s.hostname || "-")} · ${escapeHtml(s.domain || s.public_ip || "no-ip")}</div>
       <div class="meta badge-speed">↑${fmtBytes(s.traffic_up)} ↓${fmtBytes(s.traffic_down)} · 实时 ${fmtSpeed(s.speed_up)} / ${fmtSpeed(s.speed_down)}</div>
       <div class="meta">xray:${s.xray_running ? "on" : "off"} · cfg v${s.config_version} ${s.tags ? "· " + escapeHtml(s.tags) : ""}</div>
+      ${s.agent_error ? `<div class="meta" style="color:var(--danger)">错误: ${escapeHtml(s.agent_error).slice(0,180)}</div>` : ""}
       <div class="row" style="margin:0">
         <button class="small" data-act="install" data-id="${s.id}">安装命令</button>
         <button class="small" data-act="bump" data-id="${s.id}">下发配置</button>
@@ -336,12 +353,28 @@ $("#btn-reality").onclick = async () => {
 async function refreshOutbounds() {
   const data = await api("/api/outbounds");
   $("#ob-list").innerHTML = (data.outbounds || []).map((o) => `
-    <div class="item"><div><strong>${escapeHtml(o.tag)}</strong> · ${escapeHtml(o.protocol)}</div>
-    <button class="small danger" data-id="${o.id}">删除</button></div>`).join("") || '<p class="muted">暂无出站</p>';
+    <div class="item"><div><strong>${escapeHtml(o.tag)}</strong> · ${escapeHtml(o.protocol)}
+    <div class="meta">${o.enabled ? "已启用" : "未启用（不会下发，避免配置错误）"}</div></div>
+    <div class="row" style="margin:0">
+      <button class="small" data-act="toggle" data-id="${o.id}" data-en="${o.enabled ? 0 : 1}">${o.enabled ? "禁用" : "启用"}</button>
+      <button class="small danger" data-act="del" data-id="${o.id}">删除</button>
+    </div></div>`).join("") || '<p class="muted">暂无出站</p>';
   $("#ob-list").onclick = async (e) => {
-    const btn = e.target.closest("button[data-id]");
+    const btn = e.target.closest("button");
     if (!btn) return;
-    await api("/api/outbounds/" + btn.dataset.id, { method: "DELETE" });
+    if (btn.dataset.act === "del") {
+      await api("/api/outbounds/" + btn.dataset.id, { method: "DELETE" });
+    }
+    if (btn.dataset.act === "toggle") {
+      try {
+        await api("/api/outbounds/" + btn.dataset.id, {
+          method: "PUT",
+          body: JSON.stringify({ enabled: btn.dataset.en === "1" }),
+        });
+      } catch (err) {
+        alert("启用失败（可能密钥未填完整）: " + err.message);
+      }
+    }
     await refreshOutbounds();
   };
 }

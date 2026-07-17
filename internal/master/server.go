@@ -122,6 +122,7 @@ func (s *ServerApp) routes() {
 	// outbounds / routes
 	s.mux.HandleFunc("GET /api/outbounds", s.authMiddleware(s.handleListOutbounds))
 	s.mux.HandleFunc("POST /api/outbounds", s.adminOnly(s.handleCreateOutbound))
+	s.mux.HandleFunc("PUT /api/outbounds/{id}", s.adminOnly(s.handleUpdateOutbound))
 	s.mux.HandleFunc("DELETE /api/outbounds/{id}", s.adminOnly(s.handleDeleteOutbound))
 	s.mux.HandleFunc("GET /api/routes", s.authMiddleware(s.handleListRoutes))
 	s.mux.HandleFunc("POST /api/routes", s.adminOnly(s.handleCreateRoute))
@@ -283,26 +284,37 @@ func (s *ServerApp) handleMe(w http.ResponseWriter, r *http.Request) {
 	c := userFrom(r.Context())
 	var u User
 	var en int
+	var shortCode string
 	err := s.db.QueryRow(
-		`SELECT id,username,role,subscribe_token,COALESCE(plan_id,0),traffic_limit,traffic_used,COALESCE(speed_limit,0),expire_at,COALESCE(enabled,1),COALESCE(remark,''),created_at FROM users WHERE id=?`,
+		`SELECT id,username,role,subscribe_token,COALESCE(plan_id,0),traffic_limit,traffic_used,COALESCE(speed_limit,0),expire_at,COALESCE(enabled,1),COALESCE(remark,''),created_at,COALESCE(short_code,'') FROM users WHERE id=?`,
 		c.UserID,
-	).Scan(&u.ID, &u.Username, &u.Role, &u.SubscribeToken, &u.PlanID, &u.TrafficLimit, &u.TrafficUsed, &u.SpeedLimit, &u.ExpireAt, &en, &u.Remark, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.Role, &u.SubscribeToken, &u.PlanID, &u.TrafficLimit, &u.TrafficUsed, &u.SpeedLimit, &u.ExpireAt, &en, &u.Remark, &u.CreatedAt, &shortCode)
 	if err != nil {
 		writeJSON(w, 404, map[string]string{"error": "not found"})
 		return
 	}
 	u.Enabled = en == 1
+	if shortCode == "" {
+		shortCode = randomHex(4)
+		_, _ = s.db.Exec(`UPDATE users SET short_code=? WHERE id=?`, shortCode, u.ID)
+	}
 	base := s.publicURL
+	if base == "" {
+		// leave relative; frontend fills origin
+	}
 	writeJSON(w, 200, map[string]any{
 		"user":              u,
+		"short_code":        shortCode,
 		"subscribe_url":     base + "/sub/" + u.SubscribeToken,
 		"subscribe_clash":   base + "/sub/" + u.SubscribeToken + "/clash",
 		"subscribe_singbox": base + "/sub/" + u.SubscribeToken + "/singbox",
+		"subscribe_surge":   base + "/sub/" + u.SubscribeToken + "/surge",
+		"subscribe_short":   base + "/s/" + shortCode,
 	})
 }
 
 func (s *ServerApp) handleListServers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(`SELECT id,name,install_token,hostname,public_ip,status,last_seen,config_version,agent_version,COALESCE(xray_running,0),COALESCE(traffic_up,0),COALESCE(traffic_down,0),COALESCE(conn_mode,'http'),created_at,COALESCE(domain,''),COALESCE(remark,''),COALESCE(tags,''),COALESCE(speed_up,0),COALESCE(speed_down,0) FROM servers ORDER BY created_at DESC`)
+	rows, err := s.db.Query(`SELECT id,name,install_token,hostname,public_ip,status,last_seen,config_version,agent_version,COALESCE(xray_running,0),COALESCE(traffic_up,0),COALESCE(traffic_down,0),COALESCE(conn_mode,'http'),created_at,COALESCE(domain,''),COALESCE(remark,''),COALESCE(tags,''),COALESCE(speed_up,0),COALESCE(speed_down,0),COALESCE(agent_error,'') FROM servers ORDER BY created_at DESC`)
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
@@ -313,9 +325,9 @@ func (s *ServerApp) handleListServers(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var srv Server
 		var xrayRun int
-		var domain, remark, tags string
+		var domain, remark, tags, agentErr string
 		var speedUp, speedDown int64
-		if err := rows.Scan(&srv.ID, &srv.Name, &srv.InstallToken, &srv.Hostname, &srv.PublicIP, &srv.Status, &srv.LastSeen, &srv.ConfigVersion, &srv.AgentVersion, &xrayRun, &srv.TrafficUp, &srv.TrafficDown, &srv.ConnMode, &srv.CreatedAt, &domain, &remark, &tags, &speedUp, &speedDown); err != nil {
+		if err := rows.Scan(&srv.ID, &srv.Name, &srv.InstallToken, &srv.Hostname, &srv.PublicIP, &srv.Status, &srv.LastSeen, &srv.ConfigVersion, &srv.AgentVersion, &xrayRun, &srv.TrafficUp, &srv.TrafficDown, &srv.ConnMode, &srv.CreatedAt, &domain, &remark, &tags, &speedUp, &speedDown, &agentErr); err != nil {
 			continue
 		}
 		srv.XrayRunning = xrayRun == 1
@@ -324,6 +336,7 @@ func (s *ServerApp) handleListServers(w http.ResponseWriter, r *http.Request) {
 		srv.Tags = tags
 		srv.SpeedUp = speedUp
 		srv.SpeedDown = speedDown
+		srv.AgentError = agentErr
 		srv.Online = srv.LastSeen > 0 && now-srv.LastSeen < 45
 		if srv.Online {
 			srv.Status = "online"
@@ -562,7 +575,7 @@ func (s *ServerApp) handleAgentRegister(w http.ResponseWriter, r *http.Request) 
 		key = randomHex(32)
 	}
 	_, err = s.db.Exec(
-		`UPDATE servers SET agent_key=?, hostname=?, agent_version=?, status='online', last_seen=? WHERE id=?`,
+		`UPDATE servers SET agent_key=?, hostname=?, agent_version=?, status='online', last_seen=?, agent_error='' WHERE id=?`,
 		key, req.Hostname, req.AgentVersion, nowUnix(), id,
 	)
 	if err != nil {
@@ -679,6 +692,7 @@ func (s *ServerApp) buildConfigBundle(serverID string) (*protocol.ConfigBundle, 
 		return nil, err
 	}
 	var outSpecs []xraycfg.OutboundSpec
+	enabledOutTags := map[string]bool{"direct": true, "block": true, "api": true}
 	for orows.Next() {
 		var tag, proto, sj, st string
 		if err := orows.Scan(&tag, &proto, &sj, &st); err != nil {
@@ -687,7 +701,12 @@ func (s *ServerApp) buildConfigBundle(serverID string) (*protocol.ConfigBundle, 
 		var settings, stream map[string]any
 		_ = json.Unmarshal([]byte(sj), &settings)
 		_ = json.Unmarshal([]byte(st), &stream)
+		// skip incomplete wireguard / placeholders that break xray -test
+		if proto == "wireguard" && settingsIncomplete(settings) {
+			continue
+		}
 		outSpecs = append(outSpecs, xraycfg.OutboundSpec{Tag: tag, Protocol: proto, Settings: settings, Stream: stream})
+		enabledOutTags[tag] = true
 	}
 	orows.Close()
 
@@ -701,10 +720,19 @@ func (s *ServerApp) buildConfigBundle(serverID string) (*protocol.ConfigBundle, 
 		if err := rrows.Scan(&ob, &dj, &ij, &port, &netw, &pj); err != nil {
 			continue
 		}
+		if !enabledOutTags[ob] {
+			continue // skip routes pointing to disabled outbounds
+		}
 		var domain, ip, protos []string
 		_ = json.Unmarshal([]byte(dj), &domain)
 		_ = json.Unmarshal([]byte(ij), &ip)
 		_ = json.Unmarshal([]byte(pj), &protos)
+		// strip geosite:/geoip: rules that require .dat files on agent
+		domain = filterGeoSiteRules(domain)
+		ip = filterGeoIPRules(ip)
+		if len(domain) == 0 && len(ip) == 0 && port == "" && netw == "" && len(protos) == 0 {
+			continue
+		}
 		routes = append(routes, xraycfg.RouteSpec{
 			OutboundTag: ob, Domain: domain, IP: ip, Port: port, Network: netw, Protocol: protos,
 		})
@@ -756,6 +784,40 @@ func (s *ServerApp) loadCertsForServer(serverID string) ([]protocol.CertFile, ma
 		certs = append(certs, protocol.CertFile{Domain: domain, CertPEM: certPEM, KeyPEM: keyPEM})
 	}
 	return certs, byID, nil
+}
+
+func settingsIncomplete(settings map[string]any) bool {
+	if settings == nil {
+		return true
+	}
+	if sk, ok := settings["secretKey"].(string); ok {
+		if sk == "" || strings.Contains(sk, "REPLACE") {
+			return true
+		}
+	}
+	return false
+}
+
+func filterGeoSiteRules(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, d := range in {
+		if strings.HasPrefix(d, "geosite:") {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+func filterGeoIPRules(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, d := range in {
+		if strings.HasPrefix(d, "geoip:") {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 func (s *ServerApp) bumpAllServers() {

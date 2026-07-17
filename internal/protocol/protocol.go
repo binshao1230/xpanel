@@ -36,6 +36,7 @@ type HeartbeatRequest struct {
 	UptimeSec     int64           `json:"uptime_sec"`
 	Traffic       TrafficSnapshot `json:"traffic"`
 	UserTraffic   []UserTraffic   `json:"user_traffic,omitempty"`
+	LastError     string          `json:"last_error,omitempty"`
 }
 
 type HeartbeatResponse struct {

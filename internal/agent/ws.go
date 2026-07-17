@@ -133,6 +133,7 @@ func (a *Agent) wsHeartbeat(conn *websocket.Conn) error {
 		UptimeSec:     int64(time.Since(a.startedAt).Seconds()),
 		Traffic:       traf,
 		UserTraffic:   users,
+		LastError:     a.lastApplyErr,
 	}
 	a.mu.Unlock()
 	raw, _ := json.Marshal(req)

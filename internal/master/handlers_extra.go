@@ -293,7 +293,37 @@ func (s *ServerApp) handleDeleteOutbound(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	_, _ = s.db.Exec(`DELETE FROM outbounds WHERE id=?`, id)
-	_, _ = s.db.Exec(`UPDATE servers SET config_version = config_version + 1 WHERE id=?`, sid)
+	s.bumpServer(sid)
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+func (s *ServerApp) handleUpdateOutbound(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	var body struct {
+		Enabled  *bool          `json:"enabled"`
+		Settings map[string]any `json:"settings"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "bad json"})
+		return
+	}
+	var sid string
+	if err := s.db.QueryRow(`SELECT server_id FROM outbounds WHERE id=?`, id).Scan(&sid); err != nil {
+		writeJSON(w, 404, map[string]string{"error": "not found"})
+		return
+	}
+	if body.Enabled != nil {
+		en := 0
+		if *body.Enabled {
+			en = 1
+		}
+		_, _ = s.db.Exec(`UPDATE outbounds SET enabled=? WHERE id=?`, en, id)
+	}
+	if body.Settings != nil {
+		sj, _ := json.Marshal(body.Settings)
+		_, _ = s.db.Exec(`UPDATE outbounds SET settings_json=? WHERE id=?`, string(sj), id)
+	}
+	s.bumpServer(sid)
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 

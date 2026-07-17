@@ -46,6 +46,7 @@ type Server struct {
 	Domain        string `json:"domain"`
 	Remark        string `json:"remark"`
 	Tags          string `json:"tags"`
+	AgentError    string `json:"agent_error,omitempty"`
 	CreatedAt     int64  `json:"created_at"`
 	Online        bool   `json:"online"`
 }

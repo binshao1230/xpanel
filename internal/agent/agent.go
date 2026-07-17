@@ -88,6 +88,10 @@ func (a *Agent) Run() error {
 		log.Printf("initial config pull: %v", err)
 		a.ensureXray()
 	}
+	// immediate status report so panel shows xray_running without waiting a full poll interval
+	if err := a.heartbeat(); err != nil {
+		log.Printf("initial heartbeat: %v", err)
+	}
 
 	mode := strings.ToLower(a.cfg.Mode)
 	switch mode {
@@ -285,6 +289,7 @@ func (a *Agent) heartbeat() error {
 		UptimeSec:     int64(time.Since(a.startedAt).Seconds()),
 		Traffic:       traf,
 		UserTraffic:   users,
+		LastError:     a.lastApplyErr,
 	}
 	key := a.agentKey
 	a.mu.Unlock()
@@ -331,8 +336,12 @@ func (a *Agent) pullAndApply() error {
 		if err := a.xray.ApplyConfigBytes(raw); err != nil {
 			a.mu.Lock()
 			a.lastApplyErr = err.Error()
+			// do NOT advance configVersion — next heartbeat will retry after operator fixes,
+			// but throttle: remember failed version
 			a.mu.Unlock()
 			_ = writeFileAtomic(a.cfg.XrayConfigPath+".bad.json", raw)
+			_ = a.saveState()
+			log.Printf("apply xray FAILED (will retry): %v", err)
 			return fmt.Errorf("apply xray: %w", err)
 		}
 		log.Printf("xray running=%v config version=%d certs=%d checksum=%s",

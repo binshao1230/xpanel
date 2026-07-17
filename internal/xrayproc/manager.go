@@ -28,6 +28,12 @@ type Manager struct {
 }
 
 func New(bin, configPath string) *Manager {
+	if abs, err := filepath.Abs(configPath); err == nil {
+		configPath = abs
+	}
+	if abs, err := filepath.Abs(bin); err == nil && fileExists(abs) {
+		bin = abs
+	}
 	return &Manager{
 		bin:        bin,
 		configPath: configPath,
@@ -157,7 +163,16 @@ func (m *Manager) ApplyConfigBytes(raw []byte) error {
 		return err
 	}
 	// Xray detects format by file extension — must end with .json (not .tmp).
-	tmp := m.configPath + ".apply.json"
+	// Always use absolute paths: xray process Dir is binary folder.
+	cfgAbs := m.configPath
+	if abs, err := filepath.Abs(cfgAbs); err == nil {
+		cfgAbs = abs
+		m.configPath = abs
+	}
+	tmp := cfgAbs + ".apply.json"
+	if err := os.MkdirAll(filepath.Dir(cfgAbs), 0o755); err != nil {
+		return err
+	}
 	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
 		return err
 	}
@@ -169,7 +184,7 @@ func (m *Manager) ApplyConfigBytes(raw []byte) error {
 	}
 
 	// replace target config
-	if err := os.WriteFile(m.configPath, raw, 0o644); err != nil {
+	if err := os.WriteFile(cfgAbs, raw, 0o644); err != nil {
 		m.lastErr = err.Error()
 		return err
 	}
@@ -220,7 +235,12 @@ func (m *Manager) testFileLocked(path string) error {
 	if !fileExists(m.bin) {
 		return fmt.Errorf("xray binary not found: %s", m.bin)
 	}
-	cmd := exec.Command(m.bin, "run", "-test", "-c", path)
+	absPath := path
+	if a, err := filepath.Abs(path); err == nil {
+		absPath = a
+	}
+	cmd := exec.Command(m.bin, "run", "-test", "-c", absPath)
+	// keep geo files discoverable next to binary
 	if dir := filepath.Dir(m.bin); dir != "" && dir != "." {
 		cmd.Dir = dir
 	}
@@ -241,15 +261,20 @@ func (m *Manager) startLocked() error {
 		m.lastErr = err.Error()
 		return err
 	}
-	if _, err := os.Stat(m.configPath); err != nil {
+	cfgAbs := m.configPath
+	if a, err := filepath.Abs(cfgAbs); err == nil {
+		cfgAbs = a
+		m.configPath = a
+	}
+	if _, err := os.Stat(cfgAbs); err != nil {
 		return fmt.Errorf("config not found: %w", err)
 	}
-	if err := m.testFileLocked(m.configPath); err != nil {
+	if err := m.testFileLocked(cfgAbs); err != nil {
 		m.lastErr = err.Error()
 		return err
 	}
 
-	cmd := exec.Command(m.bin, "run", "-c", m.configPath)
+	cmd := exec.Command(m.bin, "run", "-c", cfgAbs)
 	if dir := filepath.Dir(m.bin); dir != "" && dir != "." {
 		cmd.Dir = dir
 	}
