@@ -611,12 +611,12 @@ func (s *ServerApp) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 			m[k] = v
 		}
 	}
-	// defaults
+	// defaults — softer auto theme by default
 	if _, ok := m["site_name"]; !ok {
 		m["site_name"] = "XPanel"
 	}
 	if _, ok := m["theme"]; !ok {
-		m["theme"] = "dark"
+		m["theme"] = "auto"
 	}
 	writeJSON(w, 200, map[string]any{"settings": m})
 }

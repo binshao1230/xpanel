@@ -12,17 +12,17 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 }
 
 func readJSON(r *http.Request, dst any) error {
-	defer r.Body.Close()
-	if r.Body == nil || r.ContentLength == 0 {
+	if r.Body == nil {
 		return nil
 	}
+	defer r.Body.Close()
 	dec := json.NewDecoder(r.Body)
 	err := dec.Decode(dst)
 	if err == nil {
 		return nil
 	}
-	// empty body
-	if err.Error() == "EOF" {
+	// empty / missing body is fine for optional payloads
+	if err.Error() == "EOF" || err.Error() == "http: invalid Read on closed Body" {
 		return nil
 	}
 	return err

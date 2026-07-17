@@ -48,11 +48,13 @@
         <div class="side-foot">
           <div id="nav-user" class="muted"></div>
           <div class="seg" id="theme-seg">
+            <button type="button" data-t="auto">自动</button>
             <button type="button" data-t="dark">暗</button>
             <button type="button" data-t="light">亮</button>
-            <button type="button" data-t="anime">二次元</button>
+            <button type="button" data-t="anime">柔粉</button>
             <button type="button" data-t="flat">扁平</button>
           </div>
+          <div class="theme-hint" id="theme-hint">主题：柔和模式</div>
           <button id="btn-logout" class="ghost">退出登录</button>
         </div>
       </aside>
@@ -287,11 +289,12 @@
           <div class="page-head"><div><h2>系统设置</h2></div></div>
           <div class="card">
             <label>站点名称 <input id="set-site" /></label>
-            <label>默认主题
+            <label>主题策略
               <select id="set-theme">
-                <option value="dark">dark</option>
-                <option value="light">light</option>
-                <option value="anime">anime 二次元</option>
+                <option value="auto">auto 每小时按时段柔和切换</option>
+                <option value="dark">dark 柔和暗色</option>
+                <option value="light">light 柔和亮色</option>
+                <option value="anime">anime 柔粉</option>
                 <option value="flat">flat 扁平</option>
               </select>
             </label>
@@ -324,6 +327,7 @@
       <button id="modal-close">关闭</button>
     </div>
   </div>
+  <div class="theme-toast" id="theme-toast"></div>
   <script src="/static/app.js"></script>
 </body>
 </html>

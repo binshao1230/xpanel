@@ -35,17 +35,111 @@ function escapeHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
   );
 }
-function setTheme(t) {
-  document.documentElement.setAttribute("data-theme", t);
-  localStorage.setItem("xpanel_theme", t);
-  $$("#theme-seg button").forEach((b) => b.classList.toggle("active", b.dataset.t === t));
+// —— 柔和主题：手动 + 每小时自动优化 ——
+const MANUAL_THEMES = ["dark", "light", "anime", "flat"];
+const AUTO_THEMES = ["auto-dawn", "auto-day", "auto-dusk", "auto-night", "auto-mist", "auto-sakura"];
+const THEME_LABELS = {
+  dark: "柔和暗色",
+  light: "柔和亮色",
+  anime: "柔粉",
+  flat: "扁平",
+  "auto-dawn": "清晨暖雾",
+  "auto-day": "日间柔光",
+  "auto-dusk": "黄昏藕紫",
+  "auto-night": "深夜静蓝",
+  "auto-mist": "薄雾青灰",
+  "auto-sakura": "夜樱浅粉",
+  auto: "自动（每小时）",
+};
+
+function pickHourlyTheme(date = new Date()) {
+  const h = date.getHours();
+  // 按时段选基底，再按小时微调，避免生硬跳变
+  if (h >= 5 && h < 8) return "auto-dawn";
+  if (h >= 8 && h < 11) return h % 2 === 0 ? "auto-day" : "auto-mist";
+  if (h >= 11 && h < 16) return "auto-day";
+  if (h >= 16 && h < 19) return "auto-dusk";
+  if (h >= 19 && h < 22) return h % 2 === 0 ? "auto-sakura" : "auto-dusk";
+  return h % 2 === 0 ? "auto-night" : "auto-sakura";
+}
+
+function showThemeToast(text) {
+  const el = $("#theme-toast");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add("show");
+  clearTimeout(showThemeToast._t);
+  showThemeToast._t = setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+function setTheme(mode, opts = {}) {
+  const quiet = !!opts.quiet;
+  const modeKey = mode || "auto";
+  localStorage.setItem("xpanel_theme_mode", modeKey);
+
+  let applied = modeKey;
+  if (modeKey === "auto") {
+    applied = pickHourlyTheme();
+  } else if (!MANUAL_THEMES.includes(modeKey) && !AUTO_THEMES.includes(modeKey)) {
+    applied = "dark";
+  }
+
+  document.documentElement.setAttribute("data-theme", applied);
+  const segMode = MANUAL_THEMES.includes(modeKey) || modeKey === "auto" ? modeKey : "auto";
+  $$("#theme-seg button").forEach((b) => b.classList.toggle("active", b.dataset.t === segMode));
+
+  const hint = $("#theme-hint");
+  if (hint) {
+    const label = THEME_LABELS[modeKey === "auto" ? applied : modeKey] || applied;
+    hint.textContent = modeKey === "auto"
+      ? `自动 · ${label} · 下小时优化`
+      : `主题 · ${label}`;
+  }
+  if (!quiet) {
+    const label = THEME_LABELS[modeKey === "auto" ? applied : modeKey] || applied;
+    showThemeToast(modeKey === "auto" ? `已切换：${label}` : `主题：${label}`);
+  }
+  // 同步设置页下拉（若已渲染）
+  const sel = $("#set-theme");
+  if (sel && (MANUAL_THEMES.includes(modeKey) || modeKey === "auto")) {
+    sel.value = modeKey;
+  }
+  return applied;
+}
+
+function startHourlyThemeOptimizer() {
+  // 每分钟检查一次整点，避免 setInterval 漂移
+  if (startHourlyThemeOptimizer._id) clearInterval(startHourlyThemeOptimizer._id);
+  let lastHour = new Date().getHours();
+  startHourlyThemeOptimizer._id = setInterval(() => {
+    const mode = localStorage.getItem("xpanel_theme_mode") || "auto";
+    if (mode !== "auto") return;
+    const h = new Date().getHours();
+    if (h !== lastHour) {
+      lastHour = h;
+      setTheme("auto", { quiet: false });
+    }
+  }, 60 * 1000);
+  // 进入页面也对齐当前时段
+  if ((localStorage.getItem("xpanel_theme_mode") || "auto") === "auto") {
+    setTheme("auto", { quiet: true });
+  }
 }
 
 async function boot() {
-  setTheme(localStorage.getItem("xpanel_theme") || "dark");
+  // 兼容旧 key：xpanel_theme → xpanel_theme_mode
+  let mode = localStorage.getItem("xpanel_theme_mode");
+  if (!mode) {
+    const legacy = localStorage.getItem("xpanel_theme");
+    mode = legacy && legacy !== "auto" ? legacy : "auto";
+    localStorage.setItem("xpanel_theme_mode", mode);
+  }
+  setTheme(mode, { quiet: true });
+  startHourlyThemeOptimizer();
+
   const meta = await api("/api/meta");
   state.meta = meta;
-  $("#ver").textContent = "v" + meta.version;
+  if ($("#ver")) $("#ver").textContent = "v" + meta.version;
   if (!meta.initialized) {
     $("#auth-hint").textContent = "首次启动：创建管理员账号";
     $("#auth-tabs").classList.add("hidden");
@@ -147,7 +241,9 @@ $("#auth-btn").onclick = async () => {
 };
 
 $$("#nav .nav").forEach((btn) => { btn.onclick = () => switchTab(btn.dataset.tab); });
-$$("#theme-seg button").forEach((b) => { b.onclick = () => setTheme(b.dataset.t); });
+$$("#theme-seg button").forEach((b) => {
+  b.onclick = () => setTheme(b.dataset.t || "auto");
+});
 $("#btn-logout").onclick = () => { localStorage.removeItem("xpanel_token"); location.reload(); };
 $("#modal-close").onclick = () => $("#modal").classList.add("hidden");
 
@@ -724,21 +820,23 @@ async function refreshSettings() {
   const data = await api("/api/settings");
   const s = data.settings || {};
   $("#set-site").value = s.site_name || "XPanel";
-  $("#set-theme").value = s.theme || "dark";
+  const themeMode = localStorage.getItem("xpanel_theme_mode") || s.theme || "auto";
+  $("#set-theme").value = themeMode === "auto" || MANUAL_THEMES.includes(themeMode) ? themeMode : "auto";
   $("#set-probe").value = s.probe_mode || "off";
   $("#set-acme-email").value = s.acme_email || "";
   $("#set-cf-token").value = s.cf_dns_api_token || "";
   $("#set-dns-key").value = s.dns_api_key || "";
   $("#set-dns-secret").value = s.dns_api_secret || "";
   $("#set-webhook").value = s.webhook_url || "";
-  if (s.acme_email && !$("#acme-email").value) $("#acme-email").value = s.acme_email;
+  if (s.acme_email && $("#acme-email") && !$("#acme-email").value) $("#acme-email").value = s.acme_email;
 }
 $("#btn-save-set").onclick = async () => {
+  const themeMode = $("#set-theme").value || "auto";
   await api("/api/settings", {
     method: "PUT",
     body: JSON.stringify({
       site_name: $("#set-site").value.trim(),
-      theme: $("#set-theme").value,
+      theme: themeMode,
       probe_mode: $("#set-probe").value,
       acme_email: $("#set-acme-email").value.trim(),
       cf_dns_api_token: $("#set-cf-token").value.trim(),
@@ -747,7 +845,7 @@ $("#btn-save-set").onclick = async () => {
       webhook_url: $("#set-webhook").value.trim(),
     }),
   });
-  setTheme($("#set-theme").value);
+  setTheme(themeMode);
   alert("已保存");
 };
 $("#btn-backup").onclick = async () => {
