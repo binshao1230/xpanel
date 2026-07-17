@@ -2,7 +2,7 @@
 
 学习公开 README / 模块划分（`internal/acme|traffic|speedtest|mcp|notify|...`），**独立实现**同类能力，不做授权绕过。
 
-| 能力域 | 妙妙屋X | XPanel 现状 (v0.4) |
+| 能力域 | 妙妙屋X | XPanel 现状 (v0.5) |
 |--------|---------|-------------------|
 | 主控 + 多 Agent | ✅ WS/HTTP/Pull | ✅ auto/WS/HTTP/Pull + 配置推送 |
 | Xray 进程托管 | ✅ | ✅ test→重启 + watchdog |

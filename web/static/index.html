@@ -3,17 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>XPanel</title>
+  <title>XPanel · 多机 Xray 面板</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <div id="app">
     <section id="view-auth" class="auth-wrap hidden">
-      <div class="card auth-card">
+      <div class="auth-card">
         <h1>XPanel</h1>
-        <p class="muted" id="auth-hint">多机 Xray 主控</p>
+        <p class="muted" id="auth-hint">多服务器 Xray 管理 · 订阅拼车</p>
+        <div class="tabs-mini" id="auth-tabs">
+          <button type="button" class="active" data-mode="login">登录</button>
+          <button type="button" data-mode="register">邀请注册</button>
+        </div>
         <label>用户名 <input id="username" autocomplete="username" /></label>
         <label>密码 <input id="password" type="password" autocomplete="current-password" /></label>
+        <label id="invite-wrap" class="hidden">邀请码 <input id="invite-code" placeholder="可选/注册必填" /></label>
         <button id="auth-btn" class="primary block">继续</button>
         <p id="auth-err" class="error"></p>
       </div>
@@ -25,82 +30,111 @@
         <nav id="nav">
           <button data-tab="dash" class="nav active">仪表盘</button>
           <button data-tab="servers" class="nav">服务器</button>
-          <button data-tab="inbounds" class="nav">入站</button>
-          <button data-tab="outbounds" class="nav">出站/路由</button>
+          <button data-tab="inbounds" class="nav">入站 / 节点</button>
+          <button data-tab="outbounds" class="nav">出站 / 路由</button>
+          <button data-tab="tunnels" class="nav">中转隧道</button>
           <button data-tab="plans" class="nav">套餐</button>
-          <button data-tab="users" class="nav">用户</button>
+          <button data-tab="users" class="nav">用户 / 续费</button>
+          <button data-tab="invites" class="nav">邀请码</button>
           <button data-tab="nodes" class="nav">外部节点</button>
-          <button data-tab="certs" class="nav">证书</button>
+          <button data-tab="certs" class="nav">证书 ACME</button>
+          <button data-tab="nginx" class="nav">Nginx 配置</button>
           <button data-tab="traffic" class="nav">流量</button>
           <button data-tab="speed" class="nav">测速</button>
-          <button data-tab="sub" class="nav">订阅</button>
-          <button data-tab="settings" class="nav">设置</button>
+          <button data-tab="links" class="nav">URI 分享</button>
+          <button data-tab="sub" class="nav">我的订阅</button>
+          <button data-tab="settings" class="nav">系统设置</button>
         </nav>
         <div class="side-foot">
           <div id="nav-user" class="muted"></div>
-          <button id="btn-theme" class="ghost">切换主题</button>
-          <button id="btn-logout" class="ghost">退出</button>
+          <div class="seg" id="theme-seg">
+            <button type="button" data-t="dark">暗</button>
+            <button type="button" data-t="light">亮</button>
+            <button type="button" data-t="anime">二次元</button>
+            <button type="button" data-t="flat">扁平</button>
+          </div>
+          <button id="btn-logout" class="ghost">退出登录</button>
         </div>
       </aside>
+
       <main class="main">
         <section id="tab-dash" class="tab">
-          <h2>仪表盘</h2>
+          <div class="page-head">
+            <div><h2>仪表盘</h2><div class="sub">总览在线节点、流量与 14 日趋势</div></div>
+            <button class="small" id="btn-refresh-dash">刷新</button>
+          </div>
           <div class="stats" id="dash-stats"></div>
+          <div class="card" style="margin-top:1rem">
+            <h3>近 14 日流量趋势</h3>
+            <canvas id="traffic-chart" class="chart" width="1000" height="160"></canvas>
+          </div>
         </section>
 
         <section id="tab-servers" class="tab hidden">
-          <h2>服务器</h2>
-          <div class="row">
-            <input id="server-name" placeholder="节点名 jp-1" />
-            <button id="btn-add-server" class="primary">添加</button>
+          <div class="page-head">
+            <div><h2>服务器</h2><div class="sub">主控 · Agent · 一键部署</div></div>
+            <div class="seg" id="srv-filter">
+              <button type="button" class="active" data-f="all">全部</button>
+              <button type="button" data-f="online">在线</button>
+              <button type="button" data-f="offline">离线</button>
+            </div>
           </div>
-          <div id="server-list" class="list"></div>
+          <div class="toolbar">
+            <input id="server-name" placeholder="节点名称 jp-1" style="max-width:200px" />
+            <input id="server-domain" placeholder="域名(可选)" style="max-width:180px" />
+            <button id="btn-add-server" class="primary">添加服务器</button>
+          </div>
+          <div id="server-list" class="grid-cards"></div>
         </section>
 
         <section id="tab-inbounds" class="tab hidden">
-          <h2>入站节点</h2>
-          <div class="row wrap">
-            <select id="in-server"></select>
-            <select id="in-proto">
-              <option value="vless">vless</option>
-              <option value="vmess">vmess</option>
-              <option value="trojan">trojan</option>
-              <option value="shadowsocks">shadowsocks</option>
-            </select>
-            <input id="in-port" type="number" value="443" style="width:100px" />
-            <input id="in-tag" placeholder="标签" />
-            <select id="in-cert"><option value="0">无 TLS 证书</option></select>
-            <button id="btn-add-in" class="primary">创建</button>
-            <button id="btn-reality">一键 Reality</button>
+          <div class="page-head"><div><h2>入站 / 节点</h2><div class="sub">VLESS Reality / TLS / 多协议</div></div></div>
+          <div class="card">
+            <div class="row wrap">
+              <select id="in-server"></select>
+              <select id="in-proto">
+                <option value="vless">vless</option>
+                <option value="vmess">vmess</option>
+                <option value="trojan">trojan</option>
+                <option value="shadowsocks">shadowsocks</option>
+              </select>
+              <input id="in-port" type="number" value="443" style="width:100px" />
+              <input id="in-tag" placeholder="标签" style="width:120px" />
+              <select id="in-cert"><option value="0">无 TLS 证书</option></select>
+              <button id="btn-add-in" class="primary">创建入站</button>
+              <button id="btn-reality">一键 Reality</button>
+            </div>
           </div>
           <div id="inbound-list" class="list"></div>
         </section>
 
         <section id="tab-outbounds" class="tab hidden">
-          <h2>出站 / 路由</h2>
+          <div class="page-head"><div><h2>出站 / 路由</h2><div class="sub">WARP、分流规则</div></div></div>
           <div class="grid2">
             <div class="card">
               <h3>出站</h3>
               <div class="row wrap">
                 <select id="ob-server"></select>
-                <input id="ob-tag" placeholder="tag" style="width:120px" />
+                <input id="ob-tag" placeholder="tag" style="width:100px" />
                 <select id="ob-proto">
                   <option value="freedom">freedom</option>
                   <option value="blackhole">blackhole</option>
                   <option value="socks">socks</option>
                   <option value="http">http</option>
                   <option value="vless">vless</option>
+                  <option value="wireguard">wireguard</option>
                 </select>
-                <button id="btn-add-ob" class="primary">添加出站</button>
+                <button id="btn-add-ob" class="primary">添加</button>
+                <button id="btn-warp">一键 WARP 骨架</button>
               </div>
               <div id="ob-list" class="list"></div>
             </div>
             <div class="card">
-              <h3>路由规则</h3>
+              <h3>路由</h3>
               <div class="row wrap">
                 <select id="rt-server"></select>
-                <input id="rt-out" placeholder="outbound tag" style="width:120px" />
-                <input id="rt-domain" placeholder="domain 逗号分隔 geosite:cn" />
+                <input id="rt-out" placeholder="outbound" style="width:100px" />
+                <input id="rt-domain" placeholder="domain 逗号分隔" />
                 <button id="btn-add-rt" class="primary">添加规则</button>
               </div>
               <div id="rt-list" class="list"></div>
@@ -108,20 +142,35 @@
           </div>
         </section>
 
+        <section id="tab-tunnels" class="tab hidden">
+          <div class="page-head"><div><h2>中转 / 端口转发</h2><div class="sub">dokodemo-door 链式转发</div></div></div>
+          <div class="card">
+            <div class="row wrap">
+              <select id="tn-server"></select>
+              <input id="tn-name" placeholder="名称" style="width:100px" />
+              <input id="tn-listen" type="number" placeholder="监听端口" style="width:100px" />
+              <input id="tn-host" placeholder="目标主机" />
+              <input id="tn-port" type="number" placeholder="目标端口" style="width:100px" />
+              <button id="btn-add-tn" class="primary">创建隧道</button>
+            </div>
+          </div>
+          <div id="tn-list" class="list"></div>
+        </section>
+
         <section id="tab-plans" class="tab hidden">
-          <h2>套餐</h2>
+          <div class="page-head"><div><h2>套餐</h2></div></div>
           <div class="row wrap">
             <input id="plan-name" placeholder="名称" />
             <input id="plan-traffic" type="number" placeholder="流量字节 0=无限" />
-            <input id="plan-days" type="number" placeholder="天数" value="30" style="width:90px" />
-            <input id="plan-note" placeholder="备注价格" />
-            <button id="btn-add-plan" class="primary">创建套餐</button>
+            <input id="plan-days" type="number" value="30" style="width:90px" />
+            <input id="plan-note" placeholder="价格备注" />
+            <button id="btn-add-plan" class="primary">创建</button>
           </div>
           <div id="plan-list" class="list"></div>
         </section>
 
         <section id="tab-users" class="tab hidden">
-          <h2>用户</h2>
+          <div class="page-head"><div><h2>用户 / 续费</h2><div class="sub">套餐绑定 · 续期 · 重置流量</div></div></div>
           <div class="row wrap">
             <input id="u-name" placeholder="用户名" />
             <input id="u-pass" type="password" placeholder="密码" />
@@ -132,107 +181,145 @@
           <div id="user-list" class="list"></div>
         </section>
 
+        <section id="tab-invites" class="tab hidden">
+          <div class="page-head"><div><h2>邀请码</h2><div class="sub">注册自动绑定套餐</div></div></div>
+          <div class="row wrap">
+            <select id="inv-plan"></select>
+            <input id="inv-max" type="number" value="1" style="width:80px" title="可用次数" />
+            <input id="inv-days" type="number" value="30" style="width:80px" title="有效天数" />
+            <input id="inv-count" type="number" value="1" style="width:80px" title="生成数量" />
+            <button id="btn-add-inv" class="primary">生成</button>
+          </div>
+          <div id="inv-list" class="list"></div>
+        </section>
+
         <section id="tab-nodes" class="tab hidden">
-          <h2>外部节点导入</h2>
-          <textarea id="ext-links" rows="5" placeholder="每行一个 vless/vmess/trojan 链接"></textarea>
+          <div class="page-head"><div><h2>外部节点</h2></div></div>
+          <textarea id="ext-links" rows="5" placeholder="每行一个分享链接 vless/vmess/trojan"></textarea>
           <button id="btn-import" class="primary">导入</button>
           <div id="ext-list" class="list"></div>
         </section>
 
         <section id="tab-certs" class="tab hidden">
-          <h2>证书 / ACME</h2>
+          <div class="page-head"><div><h2>证书 / ACME</h2></div></div>
           <div class="card">
-            <h3>ACME 申请（Let's Encrypt）</h3>
-            <p class="muted">HTTP-01 需 80 端口反代到面板 <code>/.well-known/acme-challenge/</code>；DNS-01 推荐 Cloudflare Token（无需开放 80）。</p>
+            <h3>Let's Encrypt 申请</h3>
             <div class="row wrap">
-              <input id="acme-domain" placeholder="域名 example.com" />
-              <input id="acme-email" placeholder="ACME 邮箱" />
-              <select id="acme-challenge">
-                <option value="http-01">http-01</option>
-                <option value="dns-01">dns-01</option>
-              </select>
+              <input id="acme-domain" placeholder="域名" />
+              <input id="acme-email" placeholder="邮箱" />
+              <select id="acme-challenge"><option value="http-01">http-01</option><option value="dns-01">dns-01</option></select>
               <select id="acme-dns">
                 <option value="cloudflare">cloudflare</option>
                 <option value="alidns">alidns</option>
                 <option value="tencentcloud">tencentcloud</option>
               </select>
-              <input id="acme-token" placeholder="CF Token / 通用" type="password" />
-              <input id="acme-key" placeholder="Ali/Tencent Key(Id)" type="password" />
-              <input id="acme-secret" placeholder="Ali/Tencent Secret" type="password" />
-              <select id="acme-server"><option value="">下发全部 Agent</option></select>
-              <label style="display:flex;align-items:center;gap:.35rem;margin:0">
-                <input id="acme-staging" type="checkbox" style="width:auto" /> staging
-              </label>
+              <input id="acme-token" type="password" placeholder="CF Token" />
+              <input id="acme-key" type="password" placeholder="Ali/Tencent Key" />
+              <input id="acme-secret" type="password" placeholder="Secret" />
+              <select id="acme-server"><option value="">全部 Agent</option></select>
+              <label style="display:flex;gap:.35rem;align-items:center;margin:0"><input id="acme-staging" type="checkbox" style="width:auto" /> staging</label>
               <button id="btn-acme" class="primary">申请并下发</button>
             </div>
           </div>
           <div class="card">
-            <h3>手动上传 PEM</h3>
+            <h3>手动 PEM</h3>
             <div class="row wrap">
               <input id="cert-name" placeholder="名称" />
               <input id="cert-domain" placeholder="域名" />
             </div>
-            <textarea id="cert-pem" rows="3" placeholder="证书 PEM"></textarea>
-            <textarea id="key-pem" rows="3" placeholder="私钥 PEM"></textarea>
-            <button id="btn-add-cert" class="primary">保存证书</button>
+            <textarea id="cert-pem" rows="2" placeholder="证书 PEM"></textarea>
+            <textarea id="key-pem" rows="2" placeholder="私钥 PEM"></textarea>
+            <button id="btn-add-cert" class="primary">保存</button>
           </div>
           <div id="cert-list" class="list"></div>
         </section>
 
+        <section id="tab-nginx" class="tab hidden">
+          <div class="page-head"><div><h2>Nginx 配置</h2><div class="sub">按服务器编辑草稿并随配置版本下发意图</div></div></div>
+          <div class="row">
+            <select id="ngx-server"></select>
+            <button id="btn-load-ngx">加载</button>
+            <button id="btn-save-ngx" class="primary">保存</button>
+          </div>
+          <textarea id="ngx-content" rows="16" class="mono" style="width:100%"></textarea>
+        </section>
+
         <section id="tab-traffic" class="tab hidden">
-          <h2>流量</h2>
+          <div class="page-head"><div><h2>流量</h2></div></div>
           <div id="traffic-box" class="card mono"></div>
           <div id="traffic-daily" class="list"></div>
         </section>
 
         <section id="tab-speed" class="tab hidden">
-          <h2>节点测速</h2>
-          <p class="muted">从主控对本机可见的节点做 TCP 连通性探测（真延迟/带宽需客户端侧）。</p>
+          <div class="page-head"><div><h2>测速</h2><div class="sub">主控侧 TCP/TLS 连通性探测</div></div></div>
           <div class="row wrap">
-            <input id="st-host" placeholder="host/ip" />
+            <input id="st-host" placeholder="host" />
             <input id="st-port" type="number" placeholder="port" style="width:100px" />
-            <label style="display:flex;align-items:center;gap:.35rem;margin:0">
-              <input id="st-tls" type="checkbox" style="width:auto" /> TLS
-            </label>
+            <label style="display:flex;gap:.35rem;align-items:center;margin:0"><input id="st-tls" type="checkbox" style="width:auto" /> TLS</label>
             <button id="btn-st-one" class="primary">探测</button>
-            <button id="btn-st-batch">批量探测入站</button>
+            <button id="btn-st-batch">批量入站</button>
           </div>
           <div id="speed-list" class="list"></div>
         </section>
 
+        <section id="tab-links" class="tab hidden">
+          <div class="page-head"><div><h2>URI 分享</h2><div class="sub">节点链接一览 · 可复制</div></div>
+            <button id="btn-refresh-links" class="small">刷新</button>
+          </div>
+          <div id="links-list" class="list"></div>
+        </section>
+
         <section id="tab-sub" class="tab hidden">
-          <h2>我的订阅</h2>
-          <p class="muted">复制到客户端使用</p>
-          <div class="mono" id="sub-url"></div>
-          <div class="mono" id="sub-clash"></div>
-          <div class="mono" id="sub-singbox"></div>
+          <div class="page-head"><div><h2>我的订阅</h2></div></div>
+          <div class="card">
+            <div class="muted">通用 / v2rayN</div>
+            <div class="mono" id="sub-url"></div>
+            <div class="muted">Clash Meta</div>
+            <div class="mono" id="sub-clash"></div>
+            <div class="muted">Sing-box</div>
+            <div class="mono" id="sub-singbox"></div>
+            <div class="muted">Surge</div>
+            <div class="mono" id="sub-surge"></div>
+          </div>
         </section>
 
         <section id="tab-settings" class="tab hidden">
-          <h2>系统设置</h2>
-          <label>站点名称 <input id="set-site" /></label>
-          <label>默认主题
-            <select id="set-theme"><option value="dark">dark</option><option value="light">light</option></select>
-          </label>
-          <label>ACME 默认邮箱 <input id="set-acme-email" placeholder="admin@example.com" /></label>
-          <label>Cloudflare DNS API Token <input id="set-cf-token" type="password" placeholder="Zone:DNS:Edit" /></label>
-          <label>DNS API Key (Aliyun/Tencent) <input id="set-dns-key" type="password" /></label>
-          <label>DNS API Secret <input id="set-dns-secret" type="password" /></label>
-          <label>Webhook URL（上下线通知） <input id="set-webhook" placeholder="https://..." /></label>
-          <label>TG Bot Token（预留） <input id="set-tg" placeholder="可选" /></label>
-          <div class="row" style="margin-top:1rem">
-            <button id="btn-save-set" class="primary">保存</button>
-            <button id="btn-backup">导出备份</button>
+          <div class="page-head"><div><h2>系统设置</h2></div></div>
+          <div class="card">
+            <label>站点名称 <input id="set-site" /></label>
+            <label>默认主题
+              <select id="set-theme">
+                <option value="dark">dark</option>
+                <option value="light">light</option>
+                <option value="anime">anime 二次元</option>
+                <option value="flat">flat 扁平</option>
+              </select>
+            </label>
+            <label>伪装探针模式
+              <select id="set-probe">
+                <option value="off">关闭</option>
+                <option value="blog">开启 /probe 伪装页</option>
+              </select>
+            </label>
+            <label>ACME 邮箱 <input id="set-acme-email" /></label>
+            <label>Cloudflare Token <input id="set-cf-token" type="password" /></label>
+            <label>DNS Key <input id="set-dns-key" type="password" /></label>
+            <label>DNS Secret <input id="set-dns-secret" type="password" /></label>
+            <label>Webhook URL <input id="set-webhook" /></label>
+            <div class="row" style="margin-top:1rem">
+              <button id="btn-save-set" class="primary">保存</button>
+              <button id="btn-backup">导出备份</button>
+            </div>
+            <p class="muted" style="margin-top:1rem">MCP: POST /api/mcp · 默认端口 8080 · Agent mode=auto</p>
           </div>
-          <p class="muted">MCP: POST /api/mcp · Agent 默认 mode=auto（WebSocket 优先，失败回落 HTTP）</p>
         </section>
       </main>
     </div>
   </div>
 
   <div id="modal" class="modal hidden">
-    <div class="card modal-body">
-      <h3>安装命令</h3>
+    <div class="modal-body">
+      <h3 id="modal-title">安装命令</h3>
       <pre id="install-cmd" class="mono"></pre>
       <button id="modal-close">关闭</button>
     </div>

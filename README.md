@@ -6,15 +6,18 @@
 - 功能对照：[docs/feature-parity.md](docs/feature-parity.md)
 - ACME：[docs/acme.md](docs/acme.md)
 
-## 功能
+## 功能（v0.5 · 对标妙妙屋X 风格）
 
-- 主控 Web：仪表盘 / 服务器 / 入站 / 出站路由 / 套餐 / 用户 / 外部节点 / 证书 / 流量 / 测速 / 订阅 / 设置
-- Agent：`auto` / WebSocket / HTTP / Pull；Xray 进程托管（test → 重启 + watchdog）
-- 入站：VLESS / VMess / Trojan / SS + Reality 骨架；可挂 ACME 证书 TLS
-- 出站 / 路由、套餐用户、流量统计、外部节点导入
-- 订阅：base64 / Clash / Sing-box
-- ACME：HTTP-01 + Cloudflare / 阿里云 / 腾讯云 DNS；自动续期；下发 Agent
-- MCP API、Webhook 上下线通知、备份导出
+- **界面**：暗色 / 亮色 / 二次元 / 扁平主题；服务器卡片；流量趋势图；续费进度条
+- **主控 Web**：仪表盘 · 服务器 · 入站 · 出站/路由 · 中转隧道 · 套餐 · 用户/续费 · 邀请码 · 外部节点 · 证书 · Nginx · 流量 · 测速 · URI 分享 · 订阅 · 设置
+- **Agent**：auto / WebSocket / HTTP / Pull；Xray 进程托管；证书下发；实时网速
+- **入站**：VLESS Reality（真实 x25519）· TLS · 多协议；URI 一键复制
+- **中转**：端口转发 / dokodemo 隧道
+- **出站**：WARP WireGuard 骨架 + 分流规则
+- **套餐 / 邀请码注册**、用户续费视图
+- **订阅**：base64 / Clash / Sing-box / Surge；短码 `/s/{code}`
+- **ACME**：HTTP-01 + CF/Ali/腾讯；自动续期；下发 Agent
+- **伪装探针** `/probe`、Webhook、MCP、备份导出
 
 ## Linux 一键安装（推荐）
 

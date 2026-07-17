@@ -90,20 +90,34 @@ func (s *ServerApp) routes() {
 	s.mux.HandleFunc("POST /api/auth/setup", s.handleSetup)
 	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	s.mux.HandleFunc("GET /api/auth/me", s.authMiddleware(s.handleMe))
-	s.mux.HandleFunc("GET /api/dashboard", s.authMiddleware(s.handleDashboard))
+	s.mux.HandleFunc("GET /api/dashboard", s.authMiddleware(s.handleDashboardV5))
 
 	// servers
 	s.mux.HandleFunc("GET /api/servers", s.authMiddleware(s.handleListServers))
 	s.mux.HandleFunc("POST /api/servers", s.adminOnly(s.handleCreateServer))
+	s.mux.HandleFunc("PUT /api/servers/{id}", s.adminOnly(s.handleUpdateServer))
 	s.mux.HandleFunc("GET /api/servers/{id}/install-cmd", s.adminOnly(s.handleInstallCmd))
 	s.mux.HandleFunc("DELETE /api/servers/{id}", s.adminOnly(s.handleDeleteServer))
 	s.mux.HandleFunc("POST /api/servers/{id}/bump-config", s.adminOnly(s.handleBumpConfig))
 
-	// inbounds / quick reality
+	// inbounds / quick reality / links
 	s.mux.HandleFunc("GET /api/inbounds", s.authMiddleware(s.handleListInbounds))
 	s.mux.HandleFunc("POST /api/inbounds", s.adminOnly(s.handleCreateInbound))
 	s.mux.HandleFunc("DELETE /api/inbounds/{id}", s.adminOnly(s.handleDeleteInbound))
-	s.mux.HandleFunc("POST /api/inbounds/quick-reality", s.adminOnly(s.handleQuickReality))
+	s.mux.HandleFunc("POST /api/inbounds/quick-reality", s.adminOnly(s.handleQuickRealityV5))
+	s.mux.HandleFunc("GET /api/inbounds/links", s.authMiddleware(s.handleInboundLinks))
+	s.mux.HandleFunc("POST /api/outbounds/quick-warp", s.adminOnly(s.handleQuickWARP))
+
+	// tunnels / invites / nginx / audit
+	s.mux.HandleFunc("GET /api/tunnels", s.authMiddleware(s.handleListTunnels))
+	s.mux.HandleFunc("POST /api/tunnels", s.adminOnly(s.handleCreateTunnel))
+	s.mux.HandleFunc("DELETE /api/tunnels/{id}", s.adminOnly(s.handleDeleteTunnel))
+	s.mux.HandleFunc("GET /api/invites", s.adminOnly(s.handleListInvites))
+	s.mux.HandleFunc("POST /api/invites", s.adminOnly(s.handleCreateInvite))
+	s.mux.HandleFunc("POST /api/auth/register", s.handleRegisterInvite)
+	s.mux.HandleFunc("GET /api/nginx", s.authMiddleware(s.handleGetNginx))
+	s.mux.HandleFunc("PUT /api/nginx", s.adminOnly(s.handlePutNginx))
+	s.mux.HandleFunc("GET /api/audit", s.adminOnly(s.handleAuditLogs))
 
 	// outbounds / routes
 	s.mux.HandleFunc("GET /api/outbounds", s.authMiddleware(s.handleListOutbounds))
@@ -159,6 +173,10 @@ func (s *ServerApp) routes() {
 	s.mux.HandleFunc("GET /sub/{token}", s.handleSubscribe)
 	s.mux.HandleFunc("GET /sub/{token}/clash", s.handleSubscribeClash)
 	s.mux.HandleFunc("GET /sub/{token}/singbox", s.handleSubscribeSingBox)
+	s.mux.HandleFunc("GET /sub/{token}/surge", s.handleSubscribeSurge)
+	s.mux.HandleFunc("GET /s/{code}", s.handleSubscribeShort)
+	// disguise probe homepage when enabled
+	s.mux.HandleFunc("GET /probe", s.handleProbe)
 
 	// static UI (WebFS rooted at static/ contents)
 	if s.webFS != nil {
@@ -284,7 +302,7 @@ func (s *ServerApp) handleMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ServerApp) handleListServers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(`SELECT id,name,install_token,hostname,public_ip,status,last_seen,config_version,agent_version,COALESCE(xray_running,0),COALESCE(traffic_up,0),COALESCE(traffic_down,0),COALESCE(conn_mode,'http'),created_at FROM servers ORDER BY created_at DESC`)
+	rows, err := s.db.Query(`SELECT id,name,install_token,hostname,public_ip,status,last_seen,config_version,agent_version,COALESCE(xray_running,0),COALESCE(traffic_up,0),COALESCE(traffic_down,0),COALESCE(conn_mode,'http'),created_at,COALESCE(domain,''),COALESCE(remark,''),COALESCE(tags,''),COALESCE(speed_up,0),COALESCE(speed_down,0) FROM servers ORDER BY created_at DESC`)
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
@@ -295,15 +313,27 @@ func (s *ServerApp) handleListServers(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var srv Server
 		var xrayRun int
-		if err := rows.Scan(&srv.ID, &srv.Name, &srv.InstallToken, &srv.Hostname, &srv.PublicIP, &srv.Status, &srv.LastSeen, &srv.ConfigVersion, &srv.AgentVersion, &xrayRun, &srv.TrafficUp, &srv.TrafficDown, &srv.ConnMode, &srv.CreatedAt); err != nil {
+		var domain, remark, tags string
+		var speedUp, speedDown int64
+		if err := rows.Scan(&srv.ID, &srv.Name, &srv.InstallToken, &srv.Hostname, &srv.PublicIP, &srv.Status, &srv.LastSeen, &srv.ConfigVersion, &srv.AgentVersion, &xrayRun, &srv.TrafficUp, &srv.TrafficDown, &srv.ConnMode, &srv.CreatedAt, &domain, &remark, &tags, &speedUp, &speedDown); err != nil {
 			continue
 		}
 		srv.XrayRunning = xrayRun == 1
+		srv.Domain = domain
+		srv.Remark = remark
+		srv.Tags = tags
+		srv.SpeedUp = speedUp
+		srv.SpeedDown = speedDown
 		srv.Online = srv.LastSeen > 0 && now-srv.LastSeen < 45
 		if srv.Online {
 			srv.Status = "online"
 		} else if srv.LastSeen > 0 {
 			srv.Status = "offline"
+		}
+		if s.hub != nil && s.hub.Online(srv.ID) {
+			srv.ConnMode = "websocket"
+			srv.Online = true
+			srv.Status = "online"
 		}
 		list = append(list, srv)
 	}
@@ -630,6 +660,9 @@ func (s *ServerApp) buildConfigBundle(serverID string) (*protocol.ConfigBundle, 
 		var settings, stream map[string]any
 		_ = json.Unmarshal([]byte(sj), &settings)
 		_ = json.Unmarshal([]byte(st), &stream)
+		if settings != nil {
+			delete(settings, "xpanelMeta") // not for xray core
+		}
 		if certID > 0 {
 			if domain, ok := certDomainByID[certID]; ok {
 				stream = xraycfg.MergeTLSIfNeeded(stream, domain)
@@ -771,6 +804,53 @@ func (s *ServerApp) handleSubscribeSingBox(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_, _ = w.Write([]byte(sub.ToSingBox(nodes)))
+}
+
+func (s *ServerApp) handleSubscribeSurge(w http.ResponseWriter, r *http.Request) {
+	nodes, err := s.nodesForToken(r.PathValue("token"))
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(sub.ToSurge(nodes)))
+}
+
+func (s *ServerApp) handleSubscribeShort(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+	var token string
+	err := s.db.QueryRow(`SELECT subscribe_token FROM users WHERE short_code=? AND enabled=1`, code).Scan(&token)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	// redirect-style: serve base64 by default
+	nodes, err := s.nodesForToken(token)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(sub.ToV2RayLinks(nodes)))
+}
+
+func (s *ServerApp) handleProbe(w http.ResponseWriter, r *http.Request) {
+	mode := s.getSetting("probe_mode")
+	if mode == "" || mode == "off" {
+		http.NotFound(w, r)
+		return
+	}
+	title := s.getSetting("site_name")
+	if title == "" {
+		title = "Welcome"
+	}
+	// disguise: simple static page (nginx-like / blog fake)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>%s</title>
+<style>body{font-family:system-ui;max-width:720px;margin:4rem auto;padding:0 1rem;color:#334;background:#fafbff}
+h1{font-weight:600}p{line-height:1.7;color:#556}</style></head>
+<body><h1>%s</h1><p>This site is under construction. Please check back later.</p>
+<p style="color:#99a;font-size:12px">Powered by open source.</p></body></html>`, title, title)
 }
 
 func (s *ServerApp) nodesForToken(token string) ([]sub.Node, error) {

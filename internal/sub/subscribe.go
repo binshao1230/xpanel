@@ -139,6 +139,40 @@ func ToSingBox(nodes []Node) string {
 	return string(b)
 }
 
+// ToSurge generates a minimal Surge proxy list.
+func ToSurge(nodes []Node) string {
+	var b strings.Builder
+	b.WriteString("[General]\n")
+	b.WriteString("loglevel = notify\n\n[Proxy]\n")
+	names := []string{}
+	for _, n := range nodes {
+		name := n.displayName()
+		names = append(names, name)
+		switch n.Protocol {
+		case "trojan":
+			fmt.Fprintf(&b, "%s = trojan, %s, %d, password=%s", name, n.Address, n.Port, n.Password)
+			if n.SNI != "" {
+				fmt.Fprintf(&b, ", sni=%s", n.SNI)
+			}
+			b.WriteByte('\n')
+		case "ss", "shadowsocks":
+			fmt.Fprintf(&b, "%s = ss, %s, %d, encrypt-method=aes-256-gcm, password=%s\n", name, n.Address, n.Port, n.Password)
+		case "vmess":
+			fmt.Fprintf(&b, "%s = vmess, %s, %d, username=%s\n", name, n.Address, n.Port, n.UUID)
+		default:
+			// vless not native in older surge — skip or as external
+			fmt.Fprintf(&b, "# %s type=%s not fully supported in surge profile\n", name, n.Protocol)
+		}
+	}
+	b.WriteString("\n[Proxy Group]\n")
+	b.WriteString("PROXY = select")
+	for _, n := range names {
+		fmt.Fprintf(&b, ", %s", n)
+	}
+	b.WriteString("\n\n[Rule]\nFINAL,PROXY\n")
+	return b.String()
+}
+
 func (n Node) displayName() string {
 	if n.Name != "" {
 		return n.Name

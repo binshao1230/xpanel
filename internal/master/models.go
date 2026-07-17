@@ -40,7 +40,12 @@ type Server struct {
 	XrayRunning   bool   `json:"xray_running"`
 	TrafficUp     int64  `json:"traffic_up"`
 	TrafficDown   int64  `json:"traffic_down"`
+	SpeedUp       int64  `json:"speed_up"`
+	SpeedDown     int64  `json:"speed_down"`
 	ConnMode      string `json:"conn_mode"`
+	Domain        string `json:"domain"`
+	Remark        string `json:"remark"`
+	Tags          string `json:"tags"`
 	CreatedAt     int64  `json:"created_at"`
 	Online        bool   `json:"online"`
 }

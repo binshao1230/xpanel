@@ -186,6 +186,9 @@ CREATE TABLE IF NOT EXISTS user_node_access (
 	for _, q := range alters {
 		_, _ = db.Exec(q)
 	}
+	for _, q := range migrateV5SQL() {
+		_, _ = db.Exec(q)
+	}
 	return nil
 }
 
