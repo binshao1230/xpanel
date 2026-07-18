@@ -98,110 +98,318 @@
 
         <section id="tab-inbounds" class="tab hidden">
           <div class="page-head">
-            <div><h2>入站 / 节点</h2><div class="sub">自由创建 · 完整修改 · 传输层 / TLS / Reality / 高级 JSON</div></div>
+            <div><h2>入站 / 节点</h2><div class="sub">模板一键填充 · 分区可折叠 · 保留自定义</div></div>
             <div class="row" style="margin:0">
               <button type="button" id="btn-in-new" class="primary">新建节点</button>
               <button type="button" id="btn-reality">一键 Reality</button>
+              <button type="button" id="btn-in-toggle" class="ghost">折叠编辑器</button>
             </div>
           </div>
 
-          <div class="card" id="in-editor">
-            <h3 id="in-editor-title">新建节点</h3>
-            <input type="hidden" id="in-id" value="" />
-            <div class="grid2">
-              <label>服务器
-                <select id="in-server"></select>
-              </label>
-              <label>协议
-                <select id="in-proto">
-                  <option value="vless">vless</option>
-                  <option value="vmess">vmess</option>
-                  <option value="trojan">trojan</option>
-                  <option value="shadowsocks">shadowsocks</option>
-                </select>
-              </label>
-              <label>端口 <input id="in-port" type="number" value="443" /></label>
-              <label>标签 tag <input id="in-tag" placeholder="vless-443" /></label>
-              <label>分享名称 <input id="in-share-name" placeholder="显示在订阅里的名称" /></label>
-              <label>备注 remark <input id="in-remark" placeholder="可选" /></label>
-              <label>流量倍率 <input id="in-mult" type="number" step="0.1" value="1" /></label>
-              <label>证书
-                <select id="in-cert"><option value="0">无证书 / 自管</option></select>
-              </label>
+          <div class="card editor-shell" id="in-editor">
+            <div class="editor-head" id="in-editor-head">
+              <div>
+                <h3 id="in-editor-title" style="margin:0">新建节点</h3>
+                <div class="muted" id="in-editor-hint" style="margin-top:.25rem">先选模板，再按需微调。各分区可折叠。</div>
+              </div>
+              <button type="button" class="small ghost" id="btn-in-collapse" title="折叠">▾ 折叠</button>
             </div>
 
-            <h3 style="margin-top:1rem">传输层</h3>
-            <div class="grid2">
-              <label>network
-                <select id="in-network">
-                  <option value="tcp">tcp</option>
-                  <option value="ws">ws</option>
-                  <option value="grpc">grpc</option>
-                  <option value="h2">h2</option>
-                  <option value="httpupgrade">httpupgrade</option>
-                  <option value="splithttp">splithttp / xhttp</option>
-                </select>
-              </label>
-              <label>security
-                <select id="in-security">
-                  <option value="none">none</option>
-                  <option value="tls">tls</option>
-                  <option value="reality">reality</option>
-                </select>
-              </label>
-              <label>path / serviceName <input id="in-path" placeholder="/path 或 grpc serviceName" /></label>
-              <label>host <input id="in-host" placeholder="Host 头 / h2 host" /></label>
-              <label>SNI / serverName <input id="in-sni" placeholder="www.example.com" /></label>
-              <label>Reality dest <input id="in-dest" placeholder="www.microsoft.com:443" /></label>
-              <label>fingerprint <input id="in-fp" placeholder="chrome" value="chrome" /></label>
-              <label>ALPN <input id="in-alpn" placeholder="h2,http/1.1" /></label>
-              <label>Reality publicKey <input id="in-pbk" placeholder="客户端 pbk" /></label>
-              <label>Reality privateKey <input id="in-priv" placeholder="留空自动生成" /></label>
-              <label>Reality shortId <input id="in-sid" placeholder="留空自动生成" /></label>
-              <label>启用
-                <select id="in-enabled">
-                  <option value="1">启用</option>
-                  <option value="0">禁用</option>
-                </select>
-              </label>
-            </div>
+            <div class="editor-body" id="in-editor-body">
+              <input type="hidden" id="in-id" value="" />
 
-            <h3 style="margin-top:1rem">协议参数</h3>
-            <div class="grid2">
-              <label>UUID / client id <input id="in-uuid" placeholder="留空自动生成" /></label>
-              <label>flow <input id="in-flow" placeholder="xtls-rprx-vision 或空" /></label>
-              <label>密码 password <input id="in-password" placeholder="trojan / ss" /></label>
-              <label>SS method
-                <select id="in-method">
-                  <option value="aes-256-gcm">aes-256-gcm</option>
-                  <option value="aes-128-gcm">aes-128-gcm</option>
-                  <option value="chacha20-ietf-poly1305">chacha20-ietf-poly1305</option>
-                  <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
-                  <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
-                </select>
-              </label>
-            </div>
+              <!-- 配置模板 -->
+              <details class="fold" open>
+                <summary>① 配置模板 <span class="muted">一键套用常见组合</span></summary>
+                <div class="fold-body">
+                  <label>预设模板
+                    <select id="in-template">
+                      <option value="">— 选择模板 —</option>
+                      <option value="vless-reality">VLESS + TCP + Reality + Vision（推荐）</option>
+                      <option value="vless-ws-tls">VLESS + WS + TLS</option>
+                      <option value="vless-grpc-tls">VLESS + gRPC + TLS</option>
+                      <option value="vless-xhttp-tls">VLESS + SplitHTTP/xHTTP + TLS</option>
+                      <option value="vmess-ws-tls">VMess + WS + TLS</option>
+                      <option value="trojan-tcp-tls">Trojan + TCP + TLS</option>
+                      <option value="trojan-ws-tls">Trojan + WS + TLS</option>
+                      <option value="ss-tcp">Shadowsocks + TCP（无 TLS）</option>
+                      <option value="custom">自定义（不改当前值）</option>
+                    </select>
+                  </label>
+                  <p class="muted" style="margin:.4rem 0 0">选中模板会自动填好协议/端口/传输/安全等；密钥默认自动生成。</p>
+                </div>
+              </details>
 
-            <h3 style="margin-top:1rem">高级 · 原始 JSON</h3>
-            <label style="display:flex;align-items:center;gap:.5rem;margin:.5rem 0">
-              <input type="checkbox" id="in-use-json" style="width:auto" />
-              保存时提交高级 JSON（勾选后覆盖上方表单的传输/协议参数，可完全自由改 xray 配置）
-            </label>
-            <div class="grid2">
-              <label>settings_json
-                <textarea id="in-settings-json" rows="8" placeholder='{"clients":[...],"decryption":"none"}'></textarea>
-              </label>
-              <label>stream_json
-                <textarea id="in-stream-json" rows="8" placeholder='streamSettings 完整 JSON'></textarea>
-              </label>
-            </div>
+              <!-- 基础 -->
+              <details class="fold" open>
+                <summary>② 基础信息</summary>
+                <div class="fold-body grid2">
+                  <label>服务器 <select id="in-server"></select></label>
+                  <label>协议
+                    <select id="in-proto">
+                      <option value="vless">vless</option>
+                      <option value="vmess">vmess</option>
+                      <option value="trojan">trojan</option>
+                      <option value="shadowsocks">shadowsocks</option>
+                    </select>
+                  </label>
+                  <label>端口模板
+                    <select id="in-port-tpl">
+                      <option value="443">443（HTTPS）</option>
+                      <option value="8443">8443</option>
+                      <option value="2053">2053</option>
+                      <option value="2083">2083</option>
+                      <option value="2087">2087</option>
+                      <option value="2096">2096</option>
+                      <option value="80">80（HTTP）</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-port">自定义端口
+                    <input id="in-port" type="number" value="443" />
+                  </label>
+                  <label>标签 tag <input id="in-tag" placeholder="自动：协议-端口" /></label>
+                  <label>分享名称 <input id="in-share-name" placeholder="订阅显示名，可空" /></label>
+                  <label>流量倍率
+                    <select id="in-mult-tpl">
+                      <option value="1">1× 正常</option>
+                      <option value="0.5">0.5× 半价</option>
+                      <option value="0.8">0.8×</option>
+                      <option value="1.5">1.5×</option>
+                      <option value="2">2× 双倍</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-mult">自定义倍率
+                    <input id="in-mult" type="number" step="0.1" value="1" />
+                  </label>
+                  <label>证书
+                    <select id="in-cert"><option value="0">无证书 / Reality 自管</option></select>
+                  </label>
+                  <label>启用
+                    <select id="in-enabled">
+                      <option value="1">启用</option>
+                      <option value="0">禁用</option>
+                    </select>
+                  </label>
+                  <label>备注
+                    <select id="in-remark-tpl">
+                      <option value="">无备注</option>
+                      <option value="主节点">主节点</option>
+                      <option value="备用">备用</option>
+                      <option value="IEPL">IEPL</option>
+                      <option value="中转">中转</option>
+                      <option value="测试">测试</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-remark">自定义备注
+                    <input id="in-remark" placeholder="备注" />
+                  </label>
+                </div>
+              </details>
 
-            <div class="row" style="margin-top:1rem">
-              <button type="button" id="btn-in-save" class="primary">保存节点</button>
-              <button type="button" id="btn-in-reset" class="ghost">清空表单</button>
-              <button type="button" id="btn-in-fill-json" class="ghost">从表单生成 JSON</button>
+              <!-- 传输与安全 -->
+              <details class="fold" open>
+                <summary>③ 传输与安全</summary>
+                <div class="fold-body grid2">
+                  <label>network
+                    <select id="in-network">
+                      <option value="tcp">tcp</option>
+                      <option value="ws">ws (WebSocket)</option>
+                      <option value="grpc">grpc</option>
+                      <option value="h2">h2 (HTTP/2)</option>
+                      <option value="httpupgrade">httpupgrade</option>
+                      <option value="splithttp">splithttp / xhttp</option>
+                    </select>
+                  </label>
+                  <label>security
+                    <select id="in-security">
+                      <option value="none">none 无加密</option>
+                      <option value="tls">tls</option>
+                      <option value="reality">reality</option>
+                    </select>
+                  </label>
+                  <label>path / serviceName 模板
+                    <select id="in-path-tpl">
+                      <option value="">默认 / 自动</option>
+                      <option value="/">/</option>
+                      <option value="/ray">/ray</option>
+                      <option value="/vless">/vless</option>
+                      <option value="/vmess">/vmess</option>
+                      <option value="/trojan">/trojan</option>
+                      <option value="/api/v1">/api/v1</option>
+                      <option value="/download">/download</option>
+                      <option value="GunService">GunService (gRPC)</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-path">自定义 path
+                    <input id="in-path" placeholder="/your-path" />
+                  </label>
+                  <label>Host 模板
+                    <select id="in-host-tpl">
+                      <option value="">不设置</option>
+                      <option value="__domain__">使用服务器域名</option>
+                      <option value="www.microsoft.com">www.microsoft.com</option>
+                      <option value="www.cloudflare.com">www.cloudflare.com</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-host">自定义 Host
+                    <input id="in-host" placeholder="cdn.example.com" />
+                  </label>
+                  <label>SNI / Reality 站点模板
+                    <select id="in-sni-tpl">
+                      <option value="">不设置 / 跟随</option>
+                      <option value="www.microsoft.com">Microsoft</option>
+                      <option value="www.apple.com">Apple</option>
+                      <option value="www.cloudflare.com">Cloudflare</option>
+                      <option value="www.samsung.com">Samsung</option>
+                      <option value="gateway.icloud.com">iCloud Gateway</option>
+                      <option value="dl.google.com">Google DL</option>
+                      <option value="__domain__">使用服务器域名</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-sni">自定义 SNI
+                    <input id="in-sni" placeholder="www.example.com" />
+                  </label>
+                  <label>Reality dest 模板
+                    <select id="in-dest-tpl">
+                      <option value="">不使用 / 自动</option>
+                      <option value="www.microsoft.com:443">Microsoft :443</option>
+                      <option value="www.apple.com:443">Apple :443</option>
+                      <option value="www.cloudflare.com:443">Cloudflare :443</option>
+                      <option value="www.samsung.com:443">Samsung :443</option>
+                      <option value="gateway.icloud.com:443">iCloud :443</option>
+                      <option value="dl.google.com:443">Google DL :443</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-dest">自定义 dest
+                    <input id="in-dest" placeholder="host:443" />
+                  </label>
+                  <label>fingerprint
+                    <select id="in-fp">
+                      <option value="chrome">chrome</option>
+                      <option value="firefox">firefox</option>
+                      <option value="safari">safari</option>
+                      <option value="edge">edge</option>
+                      <option value="ios">ios</option>
+                      <option value="android">android</option>
+                      <option value="random">random</option>
+                      <option value="qq">qq</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-fp-custom">自定义 fingerprint
+                    <input id="in-fp-custom" placeholder="chrome" />
+                  </label>
+                  <label>ALPN
+                    <select id="in-alpn">
+                      <option value="">默认（不设置）</option>
+                      <option value="h2,http/1.1">h2,http/1.1</option>
+                      <option value="h2">h2</option>
+                      <option value="http/1.1">http/1.1</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-alpn-custom">自定义 ALPN
+                    <input id="in-alpn-custom" placeholder="h3,h2,http/1.1" />
+                  </label>
+                </div>
+              </details>
+
+              <!-- 协议密钥（可折叠，默认收起） -->
+              <details class="fold">
+                <summary>④ 协议密钥 <span class="muted">默认自动生成，一般无需改</span></summary>
+                <div class="fold-body grid2">
+                  <label>UUID
+                    <select id="in-uuid-tpl">
+                      <option value="">自动生成</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-uuid">自定义 UUID
+                    <input id="in-uuid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+                  </label>
+                  <label>flow
+                    <select id="in-flow">
+                      <option value="">无 flow</option>
+                      <option value="xtls-rprx-vision">xtls-rprx-vision</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-flow-custom">自定义 flow
+                    <input id="in-flow-custom" />
+                  </label>
+                  <label>密码
+                    <select id="in-password-tpl">
+                      <option value="">自动生成</option>
+                      <option value="__custom__">自定义…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-password">自定义密码
+                    <input id="in-password" placeholder="trojan / ss 密码" />
+                  </label>
+                  <label>SS method
+                    <select id="in-method">
+                      <option value="aes-256-gcm">aes-256-gcm</option>
+                      <option value="aes-128-gcm">aes-128-gcm</option>
+                      <option value="chacha20-ietf-poly1305">chacha20-ietf-poly1305</option>
+                      <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
+                      <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
+                    </select>
+                  </label>
+                  <label>Reality 密钥
+                    <select id="in-reality-key-tpl">
+                      <option value="">自动生成 x25519</option>
+                      <option value="__keep__">保留当前（编辑时）</option>
+                      <option value="__custom__">自定义填写…</option>
+                    </select>
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-pbk">publicKey
+                    <input id="in-pbk" placeholder="客户端 pbk" />
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-priv">privateKey
+                    <input id="in-priv" placeholder="服务端私钥" />
+                  </label>
+                  <label class="custom-field hidden" id="wrap-in-sid">shortId
+                    <input id="in-sid" placeholder="留空自动" />
+                  </label>
+                </div>
+              </details>
+
+              <!-- 高级 JSON（默认折叠） -->
+              <details class="fold">
+                <summary>⑤ 高级 · 原始 JSON <span class="muted">完全自定义 xray 配置</span></summary>
+                <div class="fold-body">
+                  <label style="display:flex;align-items:center;gap:.5rem;margin:.25rem 0 .75rem">
+                    <input type="checkbox" id="in-use-json" style="width:auto" />
+                    保存时提交高级 JSON（覆盖模板与表单）
+                  </label>
+                  <div class="grid2">
+                    <label>settings_json
+                      <textarea id="in-settings-json" rows="7" placeholder='{"clients":[...]}'></textarea>
+                    </label>
+                    <label>stream_json
+                      <textarea id="in-stream-json" rows="7" placeholder="streamSettings"></textarea>
+                    </label>
+                  </div>
+                  <div class="row" style="margin-top:.6rem">
+                    <button type="button" id="btn-in-fill-json" class="ghost small">从表单生成 JSON</button>
+                  </div>
+                </div>
+              </details>
+
+              <div class="row editor-actions">
+                <button type="button" id="btn-in-save" class="primary">保存节点</button>
+                <button type="button" id="btn-in-reset" class="ghost">重置</button>
+                <button type="button" id="btn-in-fold-all" class="ghost">全部折叠</button>
+                <button type="button" id="btn-in-expand-all" class="ghost">全部展开</button>
+              </div>
             </div>
-            <p class="muted" id="in-editor-hint">默认用表单自由配置；需要任意字段时勾选「提交高级 JSON」。保存后自动下发 Agent。</p>
           </div>
 
           <div id="inbound-list" class="list" style="margin-top:1rem"></div>

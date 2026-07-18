@@ -921,3 +921,92 @@ html.dark .theme-toast {
     font-size: 16px !important;
   }
 }
+
+/* —— 节点编辑器：可折叠 + 模板 —— */
+.editor-shell {
+  padding: 0;
+  overflow: hidden;
+}
+.editor-shell > .editor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem;
+  border-bottom: 2px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  cursor: pointer;
+  user-select: none;
+}
+.editor-shell > .editor-body {
+  padding: 0.85rem 1.15rem 1.15rem;
+}
+.editor-shell.is-collapsed > .editor-body {
+  display: none;
+}
+.editor-shell.is-collapsed #btn-in-collapse {
+  /* rotated caret via text */
+}
+.editor-actions {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 2px dashed color-mix(in srgb, var(--primary) 16%, var(--border));
+}
+.custom-field.hidden {
+  display: none !important;
+}
+
+details.fold {
+  border: 2px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+  background: color-mix(in srgb, var(--card) 90%, var(--muted));
+  margin: 0.55rem 0;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.1);
+}
+details.fold > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.65rem 0.85rem;
+  font-weight: 650;
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+details.fold > summary::-webkit-details-marker {
+  display: none;
+}
+details.fold > summary::before {
+  content: "▸";
+  color: var(--primary);
+  font-weight: 700;
+  width: 1rem;
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+details.fold[open] > summary::before {
+  content: "▾";
+}
+details.fold > summary:hover {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+details.fold > summary .muted {
+  font-weight: 500;
+  font-size: 0.82rem;
+}
+details.fold .fold-body {
+  padding: 0.15rem 0.85rem 0.9rem;
+  border-top: 1px solid color-mix(in srgb, var(--primary) 14%, var(--border));
+}
+details.fold .fold-body.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem 1rem;
+  padding-top: 0.75rem;
+}
+@media (max-width: 720px) {
+  details.fold .fold-body.grid2 {
+    grid-template-columns: 1fr;
+  }
+}

@@ -320,7 +320,10 @@ async function fillServerSelects() {
     const sel = $("#" + id);
     if (!sel) continue;
     const head = id === "acme-server" ? '<option value="">全部 Agent</option>' : "";
-    sel.innerHTML = head + state.servers.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+    sel.innerHTML = head + state.servers.map((s) => {
+      const domain = s.domain || s.public_ip || "";
+      return `<option value="${s.id}" data-domain="${escapeHtml(domain)}">${escapeHtml(s.name)}</option>`;
+    }).join("");
   }
 }
 async function fillCertSelect() {
@@ -328,7 +331,7 @@ async function fillCertSelect() {
   state.certs = data.certificates || [];
   const sel = $("#in-cert");
   if (!sel) return;
-  sel.innerHTML = '<option value="0">无 TLS 证书</option>' +
+  sel.innerHTML = '<option value="0">无证书 / Reality 自管</option>' +
     state.certs.filter((c) => c.status === "active").map((c) =>
       `<option value="${c.id}">${escapeHtml(c.domain)} (#${c.id})</option>`).join("");
 }
@@ -405,6 +408,150 @@ $("#btn-add-server").onclick = async () => {
   await refreshServers();
 };
 
+// —— 节点编辑：可折叠 + 模板选择 + 自定义 ——
+const NODE_TEMPLATES = {
+  "vless-reality": {
+    proto: "vless", port: 443, network: "tcp", security: "reality",
+    flow: "xtls-rprx-vision", path: "", host: "",
+    sni: "www.microsoft.com", dest: "www.microsoft.com:443",
+    fp: "chrome", alpn: "", method: "aes-256-gcm",
+  },
+  "vless-ws-tls": {
+    proto: "vless", port: 443, network: "ws", security: "tls",
+    flow: "", path: "/ray", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "h2,http/1.1", method: "aes-256-gcm",
+  },
+  "vless-grpc-tls": {
+    proto: "vless", port: 443, network: "grpc", security: "tls",
+    flow: "", path: "GunService", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "h2", method: "aes-256-gcm",
+  },
+  "vless-xhttp-tls": {
+    proto: "vless", port: 443, network: "splithttp", security: "tls",
+    flow: "", path: "/xhttp", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "h2,http/1.1", method: "aes-256-gcm",
+  },
+  "vmess-ws-tls": {
+    proto: "vmess", port: 443, network: "ws", security: "tls",
+    flow: "", path: "/vmess", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "h2,http/1.1", method: "aes-256-gcm",
+  },
+  "trojan-tcp-tls": {
+    proto: "trojan", port: 443, network: "tcp", security: "tls",
+    flow: "", path: "", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "h2,http/1.1", method: "aes-256-gcm",
+  },
+  "trojan-ws-tls": {
+    proto: "trojan", port: 443, network: "ws", security: "tls",
+    flow: "", path: "/trojan", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "h2,http/1.1", method: "aes-256-gcm",
+  },
+  "ss-tcp": {
+    proto: "shadowsocks", port: 8388, network: "tcp", security: "none",
+    flow: "", path: "", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "", method: "aes-256-gcm",
+  },
+};
+
+function serverDomainHint() {
+  const sel = $("#in-server");
+  if (!sel || !sel.selectedOptions || !sel.selectedOptions[0]) return "";
+  // option text often "name (id)" — domain not always available; try data-domain
+  return sel.selectedOptions[0].dataset.domain || "";
+}
+
+/** 模板 select + 自定义 input：选 __custom__ 显示 input，其它隐藏 */
+function bindTplCustom(selectId, wrapId, inputId, opts = {}) {
+  const sel = $(selectId);
+  const wrap = wrapId ? $(wrapId) : null;
+  const input = inputId ? $(inputId) : null;
+  if (!sel) return;
+  const sync = () => {
+    const v = sel.value;
+    const isCustom = v === "__custom__";
+    if (wrap) wrap.classList.toggle("hidden", !isCustom);
+    if (isCustom && input && opts.focus) input.focus();
+  };
+  sel.onchange = () => {
+    if (sel.value !== "__custom__" && input && sel.value !== "__domain__" && sel.value !== "__keep__") {
+      // keep input in sync for non-custom for collect
+      if (input && sel.value !== "") input.value = sel.value;
+    }
+    if (sel.value === "__domain__" && input) {
+      input.value = serverDomainHint();
+    }
+    sync();
+    if (typeof opts.onChange === "function") opts.onChange(sel.value);
+  };
+  sync();
+}
+
+function setTplValue(selectId, wrapId, inputId, value) {
+  const sel = $(selectId);
+  const wrap = wrapId ? $(wrapId) : null;
+  const input = inputId ? $(inputId) : null;
+  if (!sel) return;
+  const val = value == null ? "" : String(value);
+  const opts = [...sel.options].map((o) => o.value);
+  if (val === "" && opts.includes("")) {
+    sel.value = "";
+    if (input) input.value = "";
+  } else if (opts.includes(val)) {
+    sel.value = val;
+    if (input) input.value = val;
+  } else if (val !== "" && opts.includes("__custom__")) {
+    sel.value = "__custom__";
+    if (input) input.value = val;
+  } else if (opts.includes(val)) {
+    sel.value = val;
+  } else {
+    // fallback first option
+    if (opts.includes("__custom__") && val) {
+      sel.value = "__custom__";
+      if (input) input.value = val;
+    }
+  }
+  if (wrap) wrap.classList.toggle("hidden", sel.value !== "__custom__");
+}
+
+function getTplValue(selectId, inputId) {
+  const sel = $(selectId);
+  if (!sel) return inputId && $(inputId) ? $(inputId).value.trim() : "";
+  const v = sel.value;
+  if (v === "__custom__") return inputId && $(inputId) ? $(inputId).value.trim() : "";
+  if (v === "__domain__") return serverDomainHint() || (inputId && $(inputId) ? $(inputId).value.trim() : "");
+  if (v === "__keep__") return "__keep__";
+  return v;
+}
+
+function setSelectOrCustomSimple(selectId, customInputId, wrapId, value) {
+  // for selects that embed __custom__ and use separate custom input (fp, alpn, flow)
+  const sel = $(selectId);
+  const input = customInputId ? $(customInputId) : null;
+  const wrap = wrapId ? $(wrapId) : null;
+  if (!sel) return;
+  const val = value == null ? "" : String(value);
+  const opts = [...sel.options].map((o) => o.value);
+  if (opts.includes(val)) {
+    sel.value = val;
+  } else if (val && opts.includes("__custom__")) {
+    sel.value = "__custom__";
+    if (input) input.value = val;
+  } else {
+    sel.value = opts[0] || "";
+  }
+  if (wrap) wrap.classList.toggle("hidden", sel.value !== "__custom__");
+}
+
+function getSelectOrCustomSimple(selectId, customInputId) {
+  const sel = $(selectId);
+  if (!sel) return "";
+  if (sel.value === "__custom__") {
+    return customInputId && $(customInputId) ? $(customInputId).value.trim() : "";
+  }
+  return sel.value;
+}
+
 function parseStreamForm(stream) {
   const s = stream || {};
   const network = s.network || "tcp";
@@ -456,52 +603,118 @@ function parseSettingsForm(settings) {
   }
   if (st.password) password = st.password;
   if (st.method) method = st.method;
-  if (st.xpanelMeta && st.xpanelMeta.publicKey) {
-    /* public key for reality */
-  }
   return { uuid, flow, password, method, pbk: (st.xpanelMeta && st.xpanelMeta.publicKey) || "" };
+}
+
+function setEditorCollapsed(collapsed) {
+  const shell = $("#in-editor");
+  if (!shell) return;
+  shell.classList.toggle("is-collapsed", !!collapsed);
+  const btn = $("#btn-in-collapse");
+  if (btn) btn.textContent = collapsed ? "▸ 展开" : "▾ 折叠";
+  const top = $("#btn-in-toggle");
+  if (top) top.textContent = collapsed ? "展开编辑器" : "折叠编辑器";
+}
+
+function setFoldsOpen(open) {
+  $$("#in-editor details.fold").forEach((d) => {
+    d.open = !!open;
+  });
+}
+
+function applyNodeTemplate(id) {
+  if (!id || id === "custom") return;
+  const t = NODE_TEMPLATES[id];
+  if (!t) return;
+  $("#in-proto").value = t.proto;
+  setTplValue("#in-port-tpl", "#wrap-in-port", "#in-port", String(t.port));
+  $("#in-port").value = t.port;
+  $("#in-network").value = t.network;
+  $("#in-security").value = t.security;
+  setTplValue("#in-path-tpl", "#wrap-in-path", "#in-path", t.path || "");
+  setTplValue("#in-host-tpl", "#wrap-in-host", "#in-host", t.host || "");
+  setTplValue("#in-sni-tpl", "#wrap-in-sni", "#in-sni", t.sni || "");
+  setTplValue("#in-dest-tpl", "#wrap-in-dest", "#in-dest", t.dest || "");
+  setSelectOrCustomSimple("#in-fp", "#in-fp-custom", "#wrap-in-fp-custom", t.fp || "chrome");
+  setSelectOrCustomSimple("#in-alpn", "#in-alpn-custom", "#wrap-in-alpn-custom", t.alpn || "");
+  setSelectOrCustomSimple("#in-flow", "#in-flow-custom", "#wrap-in-flow-custom", t.flow || "");
+  $("#in-method").value = t.method || "aes-256-gcm";
+  // 密钥默认自动
+  setTplValue("#in-uuid-tpl", "#wrap-in-uuid", "#in-uuid", "");
+  setTplValue("#in-password-tpl", "#wrap-in-password", "#in-password", "");
+  if ($("#in-reality-key-tpl")) {
+    $("#in-reality-key-tpl").value = "";
+    ["#wrap-in-pbk", "#wrap-in-priv", "#wrap-in-sid"].forEach((id) => {
+      const el = $(id);
+      if (el) el.classList.add("hidden");
+    });
+    $("#in-pbk").value = "";
+    $("#in-priv").value = "";
+    $("#in-sid").value = "";
+  }
+  if (!$("#in-tag").value.trim()) {
+    $("#in-tag").value = `${t.proto}-${t.port}`;
+  }
+  if ($("#in-use-json")) $("#in-use-json").checked = false;
+  $("#in-editor-hint").textContent = `已套用模板，可继续微调；密钥默认自动生成。`;
 }
 
 function resetInboundForm() {
   $("#in-id").value = "";
   $("#in-editor-title").textContent = "新建节点";
+  if ($("#in-template")) $("#in-template").value = "";
+  setTplValue("#in-port-tpl", "#wrap-in-port", "#in-port", "443");
   $("#in-port").value = 443;
   $("#in-tag").value = "";
   $("#in-share-name").value = "";
-  $("#in-remark").value = "";
+  setTplValue("#in-remark-tpl", "#wrap-in-remark", "#in-remark", "");
+  setTplValue("#in-mult-tpl", "#wrap-in-mult", "#in-mult", "1");
   $("#in-mult").value = 1;
   $("#in-cert").value = "0";
   $("#in-network").value = "tcp";
   $("#in-security").value = "none";
-  $("#in-path").value = "";
-  $("#in-host").value = "";
-  $("#in-sni").value = "";
-  $("#in-dest").value = "";
-  $("#in-fp").value = "chrome";
-  $("#in-alpn").value = "";
+  setTplValue("#in-path-tpl", "#wrap-in-path", "#in-path", "");
+  setTplValue("#in-host-tpl", "#wrap-in-host", "#in-host", "");
+  setTplValue("#in-sni-tpl", "#wrap-in-sni", "#in-sni", "");
+  setTplValue("#in-dest-tpl", "#wrap-in-dest", "#in-dest", "");
+  setSelectOrCustomSimple("#in-fp", "#in-fp-custom", "#wrap-in-fp-custom", "chrome");
+  setSelectOrCustomSimple("#in-alpn", "#in-alpn-custom", "#wrap-in-alpn-custom", "");
+  setTplValue("#in-uuid-tpl", "#wrap-in-uuid", "#in-uuid", "");
+  setSelectOrCustomSimple("#in-flow", "#in-flow-custom", "#wrap-in-flow-custom", "");
+  setTplValue("#in-password-tpl", "#wrap-in-password", "#in-password", "");
+  $("#in-method").value = "aes-256-gcm";
+  $("#in-enabled").value = "1";
+  if ($("#in-reality-key-tpl")) $("#in-reality-key-tpl").value = "";
   $("#in-pbk").value = "";
   $("#in-priv").value = "";
   $("#in-sid").value = "";
-  $("#in-enabled").value = "1";
-  $("#in-uuid").value = "";
-  $("#in-flow").value = "";
-  $("#in-password").value = "";
-  $("#in-method").value = "aes-256-gcm";
+  ["#wrap-in-pbk", "#wrap-in-priv", "#wrap-in-sid"].forEach((id) => {
+    const el = $(id);
+    if (el) el.classList.add("hidden");
+  });
   $("#in-settings-json").value = "";
   $("#in-stream-json").value = "";
   if ($("#in-use-json")) $("#in-use-json").checked = false;
-  $("#in-editor-hint").textContent = "默认用表单自由配置；需要任意字段时勾选「提交高级 JSON」。保存后自动下发 Agent。";
+  $("#in-editor-hint").textContent = "先选模板，再按需微调。各分区可折叠。";
+  setEditorCollapsed(false);
+  // 基础与模板展开，密钥/高级折叠
+  $$("#in-editor details.fold").forEach((d, i) => {
+    d.open = i < 3;
+  });
 }
 
 function fillInboundForm(inb) {
+  setEditorCollapsed(false);
   $("#in-id").value = inb.id || "";
   $("#in-editor-title").textContent = inb.id ? `编辑节点 #${inb.id}` : "新建节点";
   if (inb.server_id) $("#in-server").value = inb.server_id;
   $("#in-proto").value = inb.protocol || "vless";
+  setTplValue("#in-port-tpl", "#wrap-in-port", "#in-port", String(inb.port || 443));
   $("#in-port").value = inb.port || 443;
   $("#in-tag").value = inb.tag || "";
   $("#in-share-name").value = inb.share_name || "";
-  $("#in-remark").value = inb.remark || "";
+  setTplValue("#in-remark-tpl", "#wrap-in-remark", "#in-remark", inb.remark || "");
+  setTplValue("#in-mult-tpl", "#wrap-in-mult", "#in-mult", String(inb.multiplier != null ? inb.multiplier : 1));
   $("#in-mult").value = inb.multiplier != null ? inb.multiplier : 1;
   $("#in-cert").value = String(inb.cert_id || 0);
   $("#in-enabled").value = inb.enabled === false ? "0" : "1";
@@ -513,60 +726,119 @@ function fillInboundForm(inb) {
 
   const sf = parseSettingsForm(settings);
   const tf = parseStreamForm(stream);
-  $("#in-uuid").value = sf.uuid;
-  $("#in-flow").value = sf.flow;
-  $("#in-password").value = sf.password;
-  $("#in-method").value = sf.method || "aes-256-gcm";
   $("#in-network").value = tf.network || "tcp";
   $("#in-security").value = tf.security || "none";
-  $("#in-path").value = tf.path;
-  $("#in-host").value = tf.host;
-  $("#in-sni").value = tf.sni;
-  $("#in-dest").value = tf.dest;
-  $("#in-fp").value = tf.fp || "chrome";
-  $("#in-alpn").value = tf.alpn;
-  $("#in-pbk").value = sf.pbk || tf.pbk || "";
-  $("#in-priv").value = tf.priv;
-  $("#in-sid").value = tf.sid;
+  setTplValue("#in-path-tpl", "#wrap-in-path", "#in-path", tf.path || "");
+  setTplValue("#in-host-tpl", "#wrap-in-host", "#in-host", tf.host || "");
+  setTplValue("#in-sni-tpl", "#wrap-in-sni", "#in-sni", tf.sni || "");
+  setTplValue("#in-dest-tpl", "#wrap-in-dest", "#in-dest", tf.dest || "");
+  setSelectOrCustomSimple("#in-fp", "#in-fp-custom", "#wrap-in-fp-custom", tf.fp || "chrome");
+  setSelectOrCustomSimple("#in-alpn", "#in-alpn-custom", "#wrap-in-alpn-custom", tf.alpn || "");
+  setSelectOrCustomSimple("#in-flow", "#in-flow-custom", "#wrap-in-flow-custom", sf.flow || "");
+  $("#in-method").value = sf.method || "aes-256-gcm";
+
+  if (sf.uuid) {
+    setTplValue("#in-uuid-tpl", "#wrap-in-uuid", "#in-uuid", sf.uuid);
+  } else {
+    setTplValue("#in-uuid-tpl", "#wrap-in-uuid", "#in-uuid", "");
+  }
+  if (sf.password) {
+    setTplValue("#in-password-tpl", "#wrap-in-password", "#in-password", sf.password);
+  } else {
+    setTplValue("#in-password-tpl", "#wrap-in-password", "#in-password", "");
+  }
+
+  // Reality keys: keep by default when editing
+  const pbk = sf.pbk || "";
+  const priv = tf.priv || "";
+  const sid = tf.sid || "";
+  $("#in-pbk").value = pbk;
+  $("#in-priv").value = priv;
+  $("#in-sid").value = sid;
+  if ($("#in-reality-key-tpl")) {
+    if (priv || pbk) {
+      $("#in-reality-key-tpl").value = "__keep__";
+      ["#wrap-in-pbk", "#wrap-in-priv", "#wrap-in-sid"].forEach((id) => {
+        const el = $(id);
+        if (el) el.classList.add("hidden");
+      });
+    } else {
+      $("#in-reality-key-tpl").value = "";
+    }
+  }
+
   $("#in-settings-json").value = JSON.stringify(settings, null, 2);
   $("#in-stream-json").value = JSON.stringify(stream, null, 2);
   if ($("#in-use-json")) $("#in-use-json").checked = false;
-  $("#in-editor-hint").textContent = "正在编辑已有节点。改表单后保存即可；要完全自定义 xray 字段请勾选「提交高级 JSON」。";
+  if ($("#in-template")) $("#in-template").value = "custom";
+  $("#in-editor-hint").textContent = "正在编辑。改模板/下拉即可；密钥区默认折叠。完全自定义请开「高级 JSON」。";
+  $$("#in-editor details.fold").forEach((d, i) => {
+    d.open = i < 3;
+  });
   $("#in-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function collectInboundPayload() {
   const cert_id = Number($("#in-cert").value) || 0;
-  const mult = Number($("#in-mult").value);
+  const port = Number(getTplValue("#in-port-tpl", "#in-port")) || Number($("#in-port").value) || 0;
+  const multRaw = getTplValue("#in-mult-tpl", "#in-mult");
+  const mult = Number(multRaw);
+  const path = getTplValue("#in-path-tpl", "#in-path");
+  const host = getTplValue("#in-host-tpl", "#in-host");
+  const sni = getTplValue("#in-sni-tpl", "#in-sni");
+  const dest = getTplValue("#in-dest-tpl", "#in-dest");
+  const fp = getSelectOrCustomSimple("#in-fp", "#in-fp-custom") || "chrome";
+  const alpn = getSelectOrCustomSimple("#in-alpn", "#in-alpn-custom");
+  const flow = getSelectOrCustomSimple("#in-flow", "#in-flow-custom");
+  const uuidTpl = getTplValue("#in-uuid-tpl", "#in-uuid");
+  const passwordTpl = getTplValue("#in-password-tpl", "#in-password");
+  const remark = getTplValue("#in-remark-tpl", "#in-remark");
+
+  let public_key = "";
+  let private_key = "";
+  let short_id = "";
+  const rkey = $("#in-reality-key-tpl") ? $("#in-reality-key-tpl").value : "";
+  if (rkey === "__custom__") {
+    public_key = ($("#in-pbk").value || "").trim();
+    private_key = ($("#in-priv").value || "").trim();
+    short_id = ($("#in-sid").value || "").trim();
+  } else if (rkey === "__keep__") {
+    // send existing keys so server keeps them when form rebuilds
+    public_key = ($("#in-pbk").value || "").trim();
+    private_key = ($("#in-priv").value || "").trim();
+    short_id = ($("#in-sid").value || "").trim();
+  }
+  // rkey "" → auto: leave keys empty for server generate
+
   const payload = {
     server_id: $("#in-server").value,
     protocol: $("#in-proto").value,
-    port: Number($("#in-port").value) || 0,
+    port,
     tag: $("#in-tag").value.trim(),
     share_name: $("#in-share-name").value.trim(),
-    remark: $("#in-remark").value.trim(),
+    remark,
     multiplier: Number.isFinite(mult) && mult > 0 ? mult : 1,
     cert_id,
     enable_tls: cert_id > 0 && $("#in-security").value === "tls",
     network: $("#in-network").value,
     security: $("#in-security").value,
-    path: $("#in-path").value.trim(),
-    host: $("#in-host").value.trim(),
-    service_name: $("#in-path").value.trim(),
-    sni: $("#in-sni").value.trim(),
-    dest: $("#in-dest").value.trim(),
-    public_key: $("#in-pbk").value.trim(),
-    private_key: $("#in-priv").value.trim(),
-    short_id: $("#in-sid").value.trim(),
-    fingerprint: $("#in-fp").value.trim() || "chrome",
-    alpn: $("#in-alpn").value.trim(),
-    uuid: $("#in-uuid").value.trim(),
-    flow: $("#in-flow").value.trim(),
-    password: $("#in-password").value.trim(),
+    path,
+    host,
+    service_name: path,
+    sni,
+    dest,
+    public_key,
+    private_key,
+    short_id,
+    fingerprint: fp,
+    alpn,
+    uuid: uuidTpl,
+    flow,
+    password: passwordTpl,
     method: $("#in-method").value,
     enabled: $("#in-enabled").value !== "0",
   };
-  // 勾选「提交高级 JSON」时才覆盖表单，实现完全自由配置
+
   const useJSON = $("#in-use-json") && $("#in-use-json").checked;
   if (useJSON) {
     const sj = $("#in-settings-json").value.trim();
@@ -609,7 +881,7 @@ async function refreshInbounds() {
         <button class="small danger" data-act="del" data-id="${inb.id}">删除</button>
       </div>
     </div>`;
-  }).join("") || '<p class="muted">暂无入站节点，点上方「新建节点」自由配置</p>';
+  }).join("") || '<p class="muted">暂无入站节点，点「新建节点」用模板创建</p>';
 
   $("#inbound-list").onclick = async (e) => {
     const btn = e.target.closest("button[data-act]");
@@ -644,38 +916,87 @@ async function refreshInbounds() {
   };
 }
 
+function initInboundEditorUI() {
+  // template + custom field bindings
+  bindTplCustom("#in-port-tpl", "#wrap-in-port", "#in-port");
+  bindTplCustom("#in-mult-tpl", "#wrap-in-mult", "#in-mult");
+  bindTplCustom("#in-remark-tpl", "#wrap-in-remark", "#in-remark");
+  bindTplCustom("#in-path-tpl", "#wrap-in-path", "#in-path");
+  bindTplCustom("#in-host-tpl", "#wrap-in-host", "#in-host");
+  bindTplCustom("#in-sni-tpl", "#wrap-in-sni", "#in-sni");
+  bindTplCustom("#in-dest-tpl", "#wrap-in-dest", "#in-dest");
+  bindTplCustom("#in-uuid-tpl", "#wrap-in-uuid", "#in-uuid");
+  bindTplCustom("#in-password-tpl", "#wrap-in-password", "#in-password");
+  bindTplCustom("#in-fp", "#wrap-in-fp-custom", "#in-fp-custom");
+  bindTplCustom("#in-alpn", "#wrap-in-alpn-custom", "#in-alpn-custom");
+  bindTplCustom("#in-flow", "#wrap-in-flow-custom", "#in-flow-custom");
+
+  const rkey = $("#in-reality-key-tpl");
+  if (rkey) {
+    rkey.onchange = () => {
+      const show = rkey.value === "__custom__";
+      ["#wrap-in-pbk", "#wrap-in-priv", "#wrap-in-sid"].forEach((id) => {
+        const el = $(id);
+        if (el) el.classList.toggle("hidden", !show);
+      });
+    };
+  }
+
+  if ($("#in-template")) {
+    $("#in-template").onchange = () => applyNodeTemplate($("#in-template").value);
+  }
+
+  const collapse = () => {
+    const shell = $("#in-editor");
+    setEditorCollapsed(!(shell && shell.classList.contains("is-collapsed")));
+  };
+  if ($("#btn-in-collapse")) $("#btn-in-collapse").onclick = (e) => { e.stopPropagation(); collapse(); };
+  if ($("#btn-in-toggle")) $("#btn-in-toggle").onclick = collapse;
+  if ($("#in-editor-head")) {
+    $("#in-editor-head").onclick = (e) => {
+      if (e.target.closest("button")) return;
+      collapse();
+    };
+  }
+  if ($("#btn-in-fold-all")) $("#btn-in-fold-all").onclick = () => setFoldsOpen(false);
+  if ($("#btn-in-expand-all")) $("#btn-in-expand-all").onclick = () => setFoldsOpen(true);
+
+  // default: editor expanded but ready for templates
+  setEditorCollapsed(false);
+}
+
+initInboundEditorUI();
+
 $("#btn-in-new") && ($("#btn-in-new").onclick = () => {
   resetInboundForm();
+  setEditorCollapsed(false);
   $("#in-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 $("#btn-in-reset") && ($("#btn-in-reset").onclick = () => resetInboundForm());
 $("#btn-in-fill-json") && ($("#btn-in-fill-json").onclick = () => {
-  // preview: build local stream/settings sketch from form (server does real compose)
-  const proto = $("#in-proto").value;
-  const net = $("#in-network").value;
-  const sec = $("#in-security").value;
-  const settings = { decryption: proto === "vless" ? "none" : undefined };
-  if (proto === "vless" || proto === "vmess") {
-    settings.clients = [{ id: $("#in-uuid").value || "(auto)", email: "default@xpanel", flow: $("#in-flow").value || "" }];
-    if (proto !== "vless") delete settings.decryption;
-  } else if (proto === "trojan") {
-    settings.clients = [{ password: $("#in-password").value || "(auto)", email: "trojan@xpanel" }];
+  const p = collectInboundPayload();
+  const settings = { decryption: p.protocol === "vless" ? "none" : undefined };
+  if (p.protocol === "vless" || p.protocol === "vmess") {
+    settings.clients = [{ id: p.uuid || "(auto)", email: "default@xpanel", flow: p.flow || "" }];
+    if (p.protocol !== "vless") delete settings.decryption;
+  } else if (p.protocol === "trojan") {
+    settings.clients = [{ password: p.password || "(auto)", email: "trojan@xpanel" }];
   } else {
-    settings.method = $("#in-method").value;
-    settings.password = $("#in-password").value || "(auto)";
+    settings.method = p.method;
+    settings.password = p.password || "(auto)";
     settings.network = "tcp,udp";
   }
-  const stream = { network: net, security: sec };
-  if (net === "ws") stream.wsSettings = { path: $("#in-path").value || "/", headers: $("#in-host").value ? { Host: $("#in-host").value } : undefined };
-  if (net === "grpc") stream.grpcSettings = { serviceName: $("#in-path").value || "GunService" };
-  if (sec === "tls") stream.tlsSettings = { serverName: $("#in-sni").value || "" };
-  if (sec === "reality") {
+  const stream = { network: p.network, security: p.security };
+  if (p.network === "ws") stream.wsSettings = { path: p.path || "/", headers: p.host ? { Host: p.host } : undefined };
+  if (p.network === "grpc") stream.grpcSettings = { serviceName: p.path || "GunService" };
+  if (p.security === "tls") stream.tlsSettings = { serverName: p.sni || "", fingerprint: p.fingerprint };
+  if (p.security === "reality") {
     stream.realitySettings = {
-      dest: $("#in-dest").value || "www.microsoft.com:443",
-      serverNames: [$("#in-sni").value || "www.microsoft.com"],
-      privateKey: $("#in-priv").value || "(auto)",
-      shortIds: [$("#in-sid").value || "(auto)", ""],
-      fingerprint: $("#in-fp").value || "chrome",
+      dest: p.dest || "www.microsoft.com:443",
+      serverNames: [p.sni || "www.microsoft.com"],
+      privateKey: p.private_key || "(auto)",
+      shortIds: [p.short_id || "(auto)", ""],
+      fingerprint: p.fingerprint || "chrome",
     };
   }
   $("#in-settings-json").value = JSON.stringify(settings, null, 2);
@@ -699,12 +1020,10 @@ $("#btn-in-save") && ($("#btn-in-save").onclick = async () => {
     if (r.settings?.password) msg += "\n\nSS 密码: " + r.settings.password;
     if (r.settings?.clients?.[0]?.password) msg += "\n\nTrojan 密码: " + r.settings.clients[0].password;
     if (r.settings?.clients?.[0]?.id) msg += "\n\nUUID: " + r.settings.clients[0].id;
-    if (r.stream?.realitySettings?.privateKey) {
-      const meta = r.settings?.xpanelMeta;
-      if (meta?.publicKey) msg += "\n\nReality publicKey:\n" + meta.publicKey;
-    }
+    if (r.settings?.xpanelMeta?.publicKey) msg += "\n\nReality publicKey:\n" + r.settings.xpanelMeta.publicKey;
     alert(msg);
     resetInboundForm();
+    setEditorCollapsed(true);
     await refreshInbounds();
   } catch (e) {
     alert(e.message);
@@ -718,10 +1037,10 @@ $("#btn-reality").onclick = async () => {
     method: "POST",
     body: JSON.stringify({
       server_id,
-      port: Number($("#in-port").value) || 443,
-      dest: $("#in-dest").value.trim() || undefined,
-      sni: $("#in-sni").value.trim() || undefined,
-      flow: $("#in-flow").value.trim() || undefined,
+      port: Number(getTplValue("#in-port-tpl", "#in-port")) || 443,
+      dest: getTplValue("#in-dest-tpl", "#in-dest") || undefined,
+      sni: getTplValue("#in-sni-tpl", "#in-sni") || undefined,
+      flow: getSelectOrCustomSimple("#in-flow", "#in-flow-custom") || undefined,
       name: $("#in-tag").value.trim() || undefined,
     }),
   });
