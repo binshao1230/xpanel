@@ -602,6 +602,41 @@ const NODE_TEMPLATES = {
     flow: "", path: "", host: "", sni: "", dest: "",
     fp: "chrome", alpn: "", method: "aes-256-gcm",
   },
+  "anytls-tls": {
+    proto: "anytls", port: 443, network: "tcp", security: "tls",
+    flow: "", path: "", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "h2,http/1.1", method: "aes-256-gcm",
+  },
+  "hysteria2-tls": {
+    proto: "hysteria", port: 443, network: "hysteria", security: "tls",
+    flow: "", path: "", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "h3", method: "aes-256-gcm",
+  },
+  "socks-auth": {
+    proto: "socks", port: 1080, network: "tcp", security: "none",
+    flow: "", path: "", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "", method: "aes-256-gcm",
+  },
+  "http-auth": {
+    proto: "http", port: 8081, network: "tcp", security: "none",
+    flow: "", path: "", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "", method: "aes-256-gcm",
+  },
+  "mixed-auth": {
+    proto: "mixed", port: 1080, network: "tcp", security: "none",
+    flow: "", path: "", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "", method: "aes-256-gcm",
+  },
+  "dokodemo": {
+    proto: "dokodemo-door", port: 10080, network: "tcp", security: "none",
+    flow: "", path: "80", host: "127.0.0.1", sni: "", dest: "",
+    fp: "chrome", alpn: "", method: "aes-256-gcm",
+  },
+  "wireguard": {
+    proto: "wireguard", port: 51820, network: "tcp", security: "none",
+    flow: "", path: "", host: "", sni: "", dest: "",
+    fp: "chrome", alpn: "", method: "aes-256-gcm",
+  },
 };
 
 function serverDomainHint() {
@@ -980,6 +1015,10 @@ function collectInboundPayload() {
   if (passwordTpl) payload.password = passwordTpl;
   if (protocol === "shadowsocks" || protocol === "ss") {
     payload.method = $("#in-method").value;
+  }
+  // socks/http 用 uuid 字段当用户名（可空）
+  if (["socks", "http", "mixed", "anytls", "hysteria", "hysteria2"].includes(protocol)) {
+    if (!payload.password && $("#in-password")?.value) payload.password = $("#in-password").value.trim();
   }
 
   const useJSON = $("#in-use-json") && $("#in-use-json").checked;

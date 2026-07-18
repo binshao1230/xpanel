@@ -194,6 +194,32 @@ func buildShareLink(proto, name, addr string, port int, settingsJSON, streamJSON
 			}
 		}
 	}
+	// extract socks/http user/pass from accounts
+	accUser, accPass := "", ""
+	if accs, ok := settings["accounts"].([]any); ok && len(accs) > 0 {
+		if a0, ok := accs[0].(map[string]any); ok {
+			accUser, _ = a0["user"].(string)
+			accPass, _ = a0["pass"].(string)
+		}
+	}
+	// hysteria auth
+	hyAuth := password
+	if users, ok := settings["users"].([]any); ok && len(users) > 0 {
+		if u0, ok := users[0].(map[string]any); ok {
+			if a, _ := u0["auth"].(string); a != "" {
+				hyAuth = a
+			}
+			if p, _ := u0["password"].(string); p != "" && hyAuth == "" {
+				hyAuth = p
+			}
+		}
+	}
+	if hyAuth == "" {
+		if meta, ok := settings["bpanelMeta"].(map[string]any); ok {
+			hyAuth, _ = meta["password"].(string)
+		}
+	}
+
 	switch proto {
 	case "vless":
 		q := fmt.Sprintf("encryption=none&type=%s", netw)
@@ -221,6 +247,19 @@ func buildShareLink(proto, name, addr string, port int, settingsJSON, streamJSON
 		raw, _ := json.Marshal(obj)
 		return "vmess://" + b64(raw)
 	case "trojan":
+		q := ""
+		if sec != "" {
+			q = "security=" + sec
+		}
+		if sni != "" {
+			if q != "" {
+				q += "&"
+			}
+			q += "sni=" + sni
+		}
+		if q != "" {
+			return fmt.Sprintf("trojan://%s@%s:%d?%s#%s", password, addr, port, q, urlQueryEscape(name))
+		}
 		return fmt.Sprintf("trojan://%s@%s:%d#%s", password, addr, port, urlQueryEscape(name))
 	case "shadowsocks":
 		method, _ := settings["method"].(string)
@@ -229,6 +268,36 @@ func buildShareLink(proto, name, addr string, port int, settingsJSON, streamJSON
 		}
 		userinfo := b64([]byte(method + ":" + password))
 		return fmt.Sprintf("ss://%s@%s:%d#%s", userinfo, addr, port, urlQueryEscape(name))
+	case "socks", "mixed":
+		if accUser != "" {
+			return fmt.Sprintf("socks5://%s:%s@%s:%d#%s", accUser, accPass, addr, port, urlQueryEscape(name))
+		}
+		return fmt.Sprintf("socks5://%s:%d#%s", addr, port, urlQueryEscape(name))
+	case "http":
+		if accUser != "" {
+			return fmt.Sprintf("http://%s:%s@%s:%d#%s", accUser, accPass, addr, port, urlQueryEscape(name))
+		}
+		return fmt.Sprintf("http://%s:%d#%s", addr, port, urlQueryEscape(name))
+	case "hysteria", "hysteria2":
+		// hy2://auth@host:port?sni=...#name
+		q := "insecure=0"
+		if sni != "" {
+			q += "&sni=" + sni
+		}
+		return fmt.Sprintf("hy2://%s@%s:%d?%s#%s", hyAuth, addr, port, q, urlQueryEscape(name))
+	case "anytls":
+		// anytls://password@host:port?security=tls&sni=...#name
+		pw := hyAuth
+		if pw == "" {
+			pw = password
+		}
+		q := "security=tls"
+		if sni != "" {
+			q += "&sni=" + sni
+		}
+		return fmt.Sprintf("anytls://%s@%s:%d?%s#%s", pw, addr, port, q, urlQueryEscape(name))
+	case "wireguard":
+		return fmt.Sprintf("wireguard://%s:%d#%s", addr, port, urlQueryEscape(name))
 	default:
 		return ""
 	}

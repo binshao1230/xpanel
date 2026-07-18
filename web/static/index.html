@@ -137,16 +137,29 @@
             <button type="button" class="chip-btn" data-tpl="vmess-ws-tls">VMess WS</button>
             <button type="button" class="chip-btn" data-tpl="trojan-tcp-tls">Trojan TLS</button>
             <button type="button" class="chip-btn" data-tpl="ss-tcp">Shadowsocks</button>
+            <button type="button" class="chip-btn" data-tpl="anytls-tls">AnyTLS</button>
+            <button type="button" class="chip-btn" data-tpl="hysteria2-tls">Hysteria2</button>
+            <button type="button" class="chip-btn" data-tpl="socks-auth">SOCKS5</button>
+            <button type="button" class="chip-btn" data-tpl="http-auth">HTTP</button>
+            <button type="button" class="chip-btn" data-tpl="mixed-auth">Mixed</button>
+            <button type="button" class="chip-btn" data-tpl="wireguard">WireGuard</button>
           </div>
 
           <div class="toolbar list-toolbar">
             <input id="in-search" placeholder="搜索名称 / 协议 / 端口 / 备注…" style="flex:1;min-width:160px" />
-            <select id="in-filter-proto" style="width:auto;min-width:120px">
+            <select id="in-filter-proto" style="width:auto;min-width:140px">
               <option value="">全部协议</option>
               <option value="vless">vless</option>
               <option value="vmess">vmess</option>
               <option value="trojan">trojan</option>
               <option value="shadowsocks">shadowsocks</option>
+              <option value="anytls">anytls</option>
+              <option value="hysteria">hysteria</option>
+              <option value="socks">socks</option>
+              <option value="http">http</option>
+              <option value="mixed">mixed</option>
+              <option value="wireguard">wireguard</option>
+              <option value="dokodemo-door">dokodemo</option>
             </select>
             <select id="in-filter-sec" style="width:auto;min-width:120px">
               <option value="">全部安全</option>
@@ -188,11 +201,18 @@
                       <option value="vmess-ws-tls">VMess + WS + TLS</option>
                       <option value="trojan-tcp-tls">Trojan + TCP + TLS</option>
                       <option value="trojan-ws-tls">Trojan + WS + TLS</option>
-                      <option value="ss-tcp">Shadowsocks + TCP（无 TLS）</option>
+                      <option value="ss-tcp">Shadowsocks + TCP</option>
+                      <option value="anytls-tls">AnyTLS + TLS（需支持 anytls 的内核）</option>
+                      <option value="hysteria2-tls">Hysteria2 + TLS</option>
+                      <option value="socks-auth">SOCKS5 密码认证</option>
+                      <option value="http-auth">HTTP 代理认证</option>
+                      <option value="mixed-auth">Mixed (SOCKS+HTTP)</option>
+                      <option value="dokodemo">Dokodemo-door 端口转发</option>
+                      <option value="wireguard">WireGuard 入站</option>
                       <option value="custom">自定义（不改当前值）</option>
                     </select>
                   </label>
-                  <p class="muted" style="margin:.4rem 0 0">选中模板会自动填好协议/端口/传输/安全等；密钥默认自动生成。</p>
+                  <p class="muted" style="margin:.4rem 0 0">选中模板会自动填好协议/端口/传输/安全等；密钥默认自动生成。AnyTLS 需新版/支持该协议的 Xray。</p>
                 </div>
               </details>
 
@@ -207,6 +227,13 @@
                       <option value="vmess">vmess</option>
                       <option value="trojan">trojan</option>
                       <option value="shadowsocks">shadowsocks</option>
+                      <option value="anytls">anytls</option>
+                      <option value="hysteria">hysteria (hy2)</option>
+                      <option value="socks">socks</option>
+                      <option value="http">http</option>
+                      <option value="mixed">mixed</option>
+                      <option value="dokodemo-door">dokodemo-door</option>
+                      <option value="wireguard">wireguard</option>
                     </select>
                   </label>
                   <label>端口模板
@@ -277,6 +304,7 @@
                       <option value="h2">h2 (HTTP/2)</option>
                       <option value="httpupgrade">httpupgrade</option>
                       <option value="splithttp">splithttp / xhttp</option>
+                      <option value="hysteria">hysteria</option>
                     </select>
                   </label>
                   <label>security

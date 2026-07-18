@@ -1,6 +1,8 @@
 package master
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -87,6 +89,19 @@ func (s *ServerApp) fillProtocolDefaults(body *inboundForm) {
 		body.Settings = map[string]any{}
 	}
 	proto := strings.ToLower(body.Protocol)
+	// normalize aliases
+	switch proto {
+	case "ss":
+		body.Protocol = "shadowsocks"
+		proto = "shadowsocks"
+	case "dokodemo", "tunnel":
+		body.Protocol = "dokodemo-door"
+		proto = "dokodemo-door"
+	case "hy2", "hysteria2":
+		body.Protocol = "hysteria"
+		proto = "hysteria"
+	}
+
 	switch proto {
 	case "vless", "vmess":
 		cid := body.UUID
@@ -124,10 +139,7 @@ func (s *ServerApp) fillProtocolDefaults(body *inboundForm) {
 				{"password": pw, "email": "trojan@bpanel"},
 			}
 		}
-	case "shadowsocks", "ss":
-		if body.Protocol == "ss" {
-			body.Protocol = "shadowsocks"
-		}
+	case "shadowsocks":
 		if _, ok := body.Settings["method"]; !ok {
 			m := body.Method
 			if m == "" {
@@ -145,7 +157,151 @@ func (s *ServerApp) fillProtocolDefaults(body *inboundForm) {
 		if _, ok := body.Settings["network"]; !ok {
 			body.Settings["network"] = "tcp,udp"
 		}
+	case "socks", "mixed":
+		// mixed uses same settings shape as socks in Xray
+		// default password auth (safer for public panels); set auth=noauth via 高级 JSON 可关
+		if _, ok := body.Settings["auth"]; !ok {
+			body.Settings["auth"] = "password"
+		}
+		if body.Settings["auth"] == "password" {
+			if _, ok := body.Settings["accounts"]; !ok {
+				user := body.UUID
+				if user == "" {
+					user = "user"
+				}
+				pw := body.Password
+				if pw == "" {
+					pw = randomHex(8)
+				}
+				body.Settings["accounts"] = []map[string]any{{"user": user, "pass": pw}}
+			}
+		}
+		if _, ok := body.Settings["udp"]; !ok {
+			body.Settings["udp"] = true
+		}
+	case "http":
+		// default with account
+		if _, ok := body.Settings["accounts"]; !ok {
+			user := body.UUID
+			if user == "" {
+				user = "user"
+			}
+			pw := body.Password
+			if pw == "" {
+				pw = randomHex(8)
+			}
+			body.Settings["accounts"] = []map[string]any{{"user": user, "pass": pw}}
+		}
+		if _, ok := body.Settings["allowTransparent"]; !ok {
+			body.Settings["allowTransparent"] = false
+		}
+	case "dokodemo-door":
+		if _, ok := body.Settings["address"]; !ok {
+			addr := body.Host
+			if addr == "" {
+				addr = "127.0.0.1"
+			}
+			body.Settings["address"] = addr
+		}
+		if _, ok := body.Settings["port"]; !ok {
+			p := body.Port
+			if p <= 0 {
+				p = 80
+			}
+			// target port (not listen) — use path field as target port if numeric
+			if body.Path != "" {
+				if n, err := strconv.Atoi(strings.TrimPrefix(body.Path, "/")); err == nil && n > 0 {
+					body.Settings["port"] = n
+				} else {
+					body.Settings["port"] = 80
+				}
+			} else {
+				body.Settings["port"] = 80
+			}
+		}
+		if _, ok := body.Settings["network"]; !ok {
+			body.Settings["network"] = "tcp,udp"
+		}
+		if _, ok := body.Settings["followRedirect"]; !ok {
+			body.Settings["followRedirect"] = false
+		}
+	case "hysteria":
+		if _, ok := body.Settings["version"]; !ok {
+			body.Settings["version"] = 2
+		}
+		if _, ok := body.Settings["users"]; !ok {
+			if _, ok2 := body.Settings["clients"]; !ok2 {
+				auth := body.Password
+				if auth == "" {
+					auth = randomHex(12)
+				}
+				body.Settings["users"] = []map[string]any{
+					{"auth": auth, "email": "hy2@bpanel"},
+				}
+			}
+		}
+		// hysteria prefers its own transport
+		if body.Network == "" {
+			body.Network = "hysteria"
+		}
+		if body.Security == "" || body.Security == "none" {
+			body.Security = "tls"
+		}
+	case "wireguard":
+		// server-mode inbound (IsClient false by default in conf)
+		if _, ok := body.Settings["secretKey"]; !ok {
+			// placeholder — operator should replace with real WG private key
+			// generate random 32-byte base64 for convenience
+			body.Settings["secretKey"] = randomWGKey()
+		}
+		if _, ok := body.Settings["address"]; !ok {
+			body.Settings["address"] = []string{"10.0.0.1/24"}
+		}
+		if _, ok := body.Settings["peers"]; !ok {
+			body.Settings["peers"] = []map[string]any{}
+		}
+	case "anytls":
+		// AnyTLS (sing-box 风格字段；需支持 anytls 的 Xray/兼容内核)
+		pw := body.Password
+		if pw == "" {
+			if p, _ := body.Settings["password"].(string); p != "" {
+				pw = p
+			} else {
+				pw = randomHex(12)
+			}
+		}
+		if _, ok := body.Settings["users"]; !ok {
+			name := body.UUID
+			if name == "" {
+				name = "default"
+			}
+			body.Settings["users"] = []map[string]any{
+				{"name": name, "password": pw},
+			}
+		}
+		if _, ok := body.Settings["password"]; !ok {
+			body.Settings["password"] = pw
+		}
+		// store for share links
+		if meta, _ := body.Settings["bpanelMeta"].(map[string]any); meta == nil {
+			body.Settings["bpanelMeta"] = map[string]any{"password": pw}
+		}
+		if body.Security == "" || body.Security == "none" {
+			body.Security = "tls"
+		}
+		if body.Network == "" {
+			body.Network = "tcp"
+		}
 	}
+}
+
+// randomWGKey returns a random base64 wireguard-style private key (32 bytes).
+func randomWGKey() string {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return randomHex(32)
+	}
+	return base64.StdEncoding.EncodeToString(raw)
 }
 
 func (s *ServerApp) composeInboundStream(body *inboundForm) (map[string]any, error) {
@@ -228,6 +384,12 @@ func (s *ServerApp) composeInboundStream(body *inboundForm) (map[string]any, err
 			sh["host"] = body.Host
 		}
 		stream["splithttpSettings"] = sh
+	case "hysteria":
+		// protocol-native transport for hysteria v2
+		stream["network"] = "hysteria"
+		if body.Security == "" {
+			stream["security"] = "tls"
+		}
 	case "tcp":
 		// optional http header camouflage left to advanced JSON
 	}
