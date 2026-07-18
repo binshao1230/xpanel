@@ -898,7 +898,6 @@ function fillInboundForm(inb) {
   $$("#in-editor details.fold").forEach((d, i) => {
     d.open = i < 3;
   });
-  $("#in-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function collectInboundPayload() {
@@ -933,9 +932,10 @@ function collectInboundPayload() {
   }
   // rkey "" → auto: leave keys empty for server generate
 
+  const protocol = $("#in-proto").value;
   const payload = {
     server_id: $("#in-server").value,
-    protocol: $("#in-proto").value,
+    protocol,
     port,
     tag: $("#in-tag").value.trim(),
     share_name: $("#in-share-name").value.trim(),
@@ -955,12 +955,16 @@ function collectInboundPayload() {
     short_id,
     fingerprint: fp,
     alpn,
-    uuid: uuidTpl,
-    flow,
-    password: passwordTpl,
-    method: $("#in-method").value,
     enabled: $("#in-enabled").value !== "0",
   };
+  // Only send identity fields when user explicitly set them (avoid server treating
+  // empty uuid as "regenerate" or always-present method as client rebuild).
+  if (uuidTpl) payload.uuid = uuidTpl;
+  if (flow) payload.flow = flow;
+  if (passwordTpl) payload.password = passwordTpl;
+  if (protocol === "shadowsocks" || protocol === "ss") {
+    payload.method = $("#in-method").value;
+  }
 
   const useJSON = $("#in-use-json") && $("#in-use-json").checked;
   if (useJSON) {
@@ -1609,21 +1613,24 @@ $("#btn-st-batch").onclick = async () => {
 
 async function refreshLinks() {
   const data = await api("/api/inbounds/links");
-  $("#links-list").innerHTML = (data.links || []).map((l) => `
+  const links = data.links || [];
+  state._linkByIdx = links.map((l) => l.link || "");
+  $("#links-list").innerHTML = links.map((l, i) => `
     <div class="item" style="align-items:flex-start"><div style="flex:1">
       <strong>${escapeHtml(l.name)}</strong> · ${escapeHtml(l.protocol)} ${escapeHtml(l.address)}:${l.port}
       <div class="mono" style="margin-top:.4rem">${escapeHtml(l.link || "(empty)")}</div>
     </div>
-    <button class="small" data-copy="${escapeHtml(l.link || "")}">复制</button></div>`).join("") || '<p class="muted">暂无</p>';
+    <button class="small" data-copy-idx="${i}">复制</button></div>`).join("") || '<p class="muted">暂无</p>';
   $("#links-list").onclick = async (e) => {
-    const btn = e.target.closest("button[data-copy]");
+    const btn = e.target.closest("button[data-copy-idx]");
     if (!btn) return;
+    const link = (state._linkByIdx || [])[Number(btn.dataset.copyIdx)] || "";
     try {
-      await navigator.clipboard.writeText(btn.dataset.copy);
+      await copyText(link);
       btn.textContent = "已复制";
       setTimeout(() => (btn.textContent = "复制"), 1200);
-    } catch {
-      prompt("复制:", btn.dataset.copy);
+    } catch (err) {
+      toast(err.message || "复制失败", "err");
     }
   };
 }

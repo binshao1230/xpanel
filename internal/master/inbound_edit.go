@@ -264,15 +264,16 @@ func (s *ServerApp) composeInboundStream(body *inboundForm) (map[string]any, err
 	case "reality":
 		priv := body.PrivateKey
 		pub := body.PublicKey
-		if priv == "" || pub == "" {
+		// Only generate a fresh pair when both keys are missing.
+		// If only private is present, derive public — never pair old priv with a new pub.
+		if priv == "" && pub == "" {
 			p, u, err := xpcrypto.X25519Pair()
 			if err != nil {
 				return nil, err
 			}
-			if priv == "" {
-				priv = p
-			}
-			if pub == "" {
+			priv, pub = p, u
+		} else if priv != "" && pub == "" {
+			if u, err := xpcrypto.PublicFromPrivate(priv); err == nil {
 				pub = u
 			}
 		}
@@ -404,11 +405,15 @@ FROM inbounds WHERE id=?`, id).Scan(
 	// Track whether client supplied full JSON/maps (must not be wiped by form fields).
 	settingsExplicit := body.Settings != nil || strings.TrimSpace(body.SettingsJSON) != ""
 	streamExplicit := body.Stream != nil || strings.TrimSpace(body.StreamJSON) != ""
-	// Partial update: only toggle/enabled etc. — no form transport fields beyond defaults.
+	// Transport form fields (fingerprint alone is too common — require real transport intent).
 	formTransport := body.Network != "" || body.Security != "" || body.Path != "" || body.Host != "" ||
 		body.SNI != "" || body.Dest != "" || body.PrivateKey != "" || body.PublicKey != "" ||
-		body.ServiceName != "" || body.ShortID != "" || body.ALPN != "" || body.Fingerprint != ""
-	formProtoFields := body.UUID != "" || body.ClientID != "" || body.Password != "" || body.Method != "" || body.Flow != ""
+		body.ServiceName != "" || body.ShortID != "" || body.ALPN != ""
+	// Only rebuild clients when identity secrets are explicitly provided.
+	// Do NOT treat method/flow alone as rebuild triggers (UI always sends method/default flow).
+	rebuildClients := body.UUID != "" || body.ClientID != "" || body.Password != ""
+	patchFlow := body.Flow != "" && !rebuildClients
+	patchMethod := body.Method != "" && !rebuildClients
 
 	if body.ServerID == "" {
 		body.ServerID = curServer
@@ -431,12 +436,41 @@ FROM inbounds WHERE id=?`, id).Scan(
 		_ = json.Unmarshal([]byte(curST), &body.Stream)
 	}
 
-	// Rebuild stream from form only when form transport present and no explicit stream JSON.
+	// Preserve Reality keys from current stream when form rebuilds without keys
+	// (prevents accidental key rotation on every save).
+	var curPriv, curPub, curSid string
+	if curStream := map[string]any{}; json.Unmarshal([]byte(curST), &curStream) == nil {
+		if rs, ok := curStream["realitySettings"].(map[string]any); ok {
+			curPriv, _ = rs["privateKey"].(string)
+			if ids, ok := rs["shortIds"].([]any); ok && len(ids) > 0 {
+				curSid, _ = ids[0].(string)
+			}
+		}
+		if curSettings := map[string]any{}; json.Unmarshal([]byte(curSJ), &curSettings) == nil {
+			if meta, ok := curSettings["xpanelMeta"].(map[string]any); ok {
+				curPub, _ = meta["publicKey"].(string)
+				if curSid == "" {
+					curSid, _ = meta["shortId"].(string)
+				}
+			}
+		}
+	}
 	if formTransport && !streamExplicit {
+		if body.PrivateKey == "" && curPriv != "" {
+			body.PrivateKey = curPriv
+		}
+		if body.PublicKey == "" && curPub != "" {
+			body.PublicKey = curPub
+		}
+		if body.ShortID == "" && curSid != "" {
+			body.ShortID = curSid
+		}
+		// force rebuild from form fields
 		body.Stream = nil
 	}
-	// Rebuild clients when protocol fields set and settings not fully provided as raw JSON.
-	if formProtoFields && !settingsExplicit && body.Settings != nil {
+
+	// Rebuild clients only when UUID/password explicitly provided.
+	if rebuildClients && !settingsExplicit && body.Settings != nil {
 		delete(body.Settings, "clients")
 		if body.Password != "" {
 			delete(body.Settings, "password")
@@ -455,6 +489,21 @@ FROM inbounds WHERE id=?`, id).Scan(
 		}
 	} else {
 		settings = s.composeInboundSettings(&body)
+	}
+	// Patch flow/method in place without regenerating clients/UUID.
+	if !settingsExplicit && !rebuildClients {
+		if patchMethod {
+			settings["method"] = body.Method
+		}
+		if patchFlow {
+			if clients, ok := settings["clients"].([]any); ok {
+				for _, c := range clients {
+					if m, ok := c.(map[string]any); ok {
+						m["flow"] = body.Flow
+					}
+				}
+			}
+		}
 	}
 	// Keep settings in body for reality meta injection.
 	body.Settings = settings
@@ -521,14 +570,15 @@ FROM inbounds WHERE id=?`, id).Scan(
 		}
 	}
 
-	// remark / share_name: keep previous on empty partial updates
+	// remark / share_name: keep previous when omitted on partial updates
 	remark := body.Remark
-	if remark == "" && !formTransport && !formProtoFields && !settingsExplicit && body.Tag == curTag {
+	if remark == "" && !formTransport && !rebuildClients && !settingsExplicit && body.Tag == curTag {
 		remark = curRemark
 	}
 	shareName := body.ShareName
 	if shareName == "" {
-		if curShare != "" && !formTransport && !formProtoFields && body.Tag == curTag {
+		// Prefer existing custom share name over falling back to tag on full form edits.
+		if curShare != "" {
 			shareName = curShare
 		} else if body.Tag != "" {
 			shareName = body.Tag

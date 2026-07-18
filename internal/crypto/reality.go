@@ -19,6 +19,24 @@ func X25519Pair() (privateKey, publicKey string, err error) {
 	return privateKey, publicKey, nil
 }
 
+// PublicFromPrivate derives Reality public key from a private key string.
+func PublicFromPrivate(privateKey string) (string, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(privateKey)
+	if err != nil {
+		// try standard base64
+		raw, err = base64.StdEncoding.DecodeString(privateKey)
+		if err != nil {
+			return "", err
+		}
+	}
+	curve := ecdh.X25519()
+	priv, err := curve.NewPrivateKey(raw)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(priv.PublicKey().Bytes()), nil
+}
+
 // RandomShortID returns hex shortId for Reality (default 8 hex chars = 4 bytes).
 func RandomShortID() (string, error) {
 	b := make([]byte, 4)
