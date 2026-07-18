@@ -35,42 +35,66 @@
     </section>
 
     <div id="view-main" class="layout hidden">
-      <aside class="side">
-        <div class="brand">XPanel <span id="ver"></span></div>
+      <div class="side-mask" id="side-mask"></div>
+      <aside class="side" id="side">
+        <div class="brand">
+          <span class="brand-mark">XP</span>
+          <span class="brand-text">XPanel <span id="ver"></span></span>
+        </div>
         <nav id="nav">
-          <button data-tab="dash" class="nav active">仪表盘</button>
-          <button data-tab="servers" class="nav">服务器</button>
-          <button data-tab="inbounds" class="nav">入站 / 节点</button>
-          <button data-tab="outbounds" class="nav">出站 / 路由</button>
-          <button data-tab="tunnels" class="nav">中转隧道</button>
-          <button data-tab="plans" class="nav">套餐</button>
-          <button data-tab="users" class="nav">用户 / 续费</button>
-          <button data-tab="invites" class="nav">邀请码</button>
-          <button data-tab="nodes" class="nav">外部节点</button>
-          <button data-tab="certs" class="nav">证书 ACME</button>
-          <button data-tab="nginx" class="nav">Nginx 配置</button>
-          <button data-tab="traffic" class="nav">流量</button>
-          <button data-tab="speed" class="nav">测速</button>
-          <button data-tab="links" class="nav">URI 分享</button>
-          <button data-tab="sub" class="nav">我的订阅</button>
-          <button data-tab="settings" class="nav">系统设置</button>
+          <div class="nav-group">总览</div>
+          <button data-tab="dash" class="nav active"><span class="nav-ico">▣</span>仪表盘</button>
+          <div class="nav-group">代理</div>
+          <button data-tab="servers" class="nav"><span class="nav-ico">⬡</span>服务器</button>
+          <button data-tab="inbounds" class="nav"><span class="nav-ico">◎</span>入站节点</button>
+          <button data-tab="outbounds" class="nav"><span class="nav-ico">⇢</span>出站路由</button>
+          <button data-tab="tunnels" class="nav"><span class="nav-ico">⇄</span>中转隧道</button>
+          <button data-tab="links" class="nav"><span class="nav-ico">🔗</span>URI 分享</button>
+          <button data-tab="nodes" class="nav"><span class="nav-ico">＋</span>外部节点</button>
+          <div class="nav-group">用户</div>
+          <button data-tab="plans" class="nav"><span class="nav-ico">▤</span>套餐</button>
+          <button data-tab="users" class="nav"><span class="nav-ico">☺</span>用户续费</button>
+          <button data-tab="invites" class="nav"><span class="nav-ico">＃</span>邀请码</button>
+          <button data-tab="sub" class="nav"><span class="nav-ico">⌁</span>我的订阅</button>
+          <div class="nav-group">运维</div>
+          <button data-tab="certs" class="nav"><span class="nav-ico">⚿</span>证书 ACME</button>
+          <button data-tab="nginx" class="nav"><span class="nav-ico">{ }</span>Nginx</button>
+          <button data-tab="traffic" class="nav"><span class="nav-ico">◔</span>流量</button>
+          <button data-tab="speed" class="nav"><span class="nav-ico">⚡</span>测速</button>
+          <button data-tab="settings" class="nav"><span class="nav-ico">⚙</span>系统设置</button>
         </nav>
         <div class="side-foot">
-          <div id="nav-user" class="muted"></div>
+          <div id="nav-user" class="muted user-pill"></div>
           <button type="button" class="theme-cycle" id="theme-cycle" title="切换主题" aria-label="切换主题">
             <span class="theme-ico" id="theme-ico">◐</span>
             <span id="theme-label">跟随系统</span>
           </button>
-          <div class="theme-hint" id="theme-hint">妙妙屋主题 · light → dark → system</div>
           <button id="btn-logout" class="ghost">退出登录</button>
         </div>
       </aside>
 
+      <div class="content-wrap">
+      <header class="topbar">
+        <button type="button" class="icon-btn" id="btn-side-toggle" aria-label="菜单">☰</button>
+        <div class="topbar-title">
+          <h1 id="page-title">仪表盘</h1>
+          <p class="sub" id="page-sub">总览在线节点、流量与趋势</p>
+        </div>
+        <div class="topbar-actions">
+          <button type="button" class="small ghost" id="btn-global-refresh" title="刷新当前页">↻ 刷新</button>
+        </div>
+      </header>
       <main class="main">
         <section id="tab-dash" class="tab">
+          <div class="quick-actions" id="dash-quick">
+            <button type="button" class="qa-card" data-go="servers"><span>⬡</span><b>添加服务器</b><small>安装 Agent</small></button>
+            <button type="button" class="qa-card" data-go="inbounds"><span>◎</span><b>创建节点</b><small>模板一键</small></button>
+            <button type="button" class="qa-card" data-go="certs"><span>⚿</span><b>申请证书</b><small>ACME</small></button>
+            <button type="button" class="qa-card" data-go="sub"><span>⌁</span><b>我的订阅</b><small>复制链接</small></button>
+          </div>
           <div class="page-head">
-            <div><h2>仪表盘</h2><div class="sub">总览在线节点、流量与 14 日趋势</div></div>
-            <button class="small" id="btn-refresh-dash">刷新</button>
+            <div><h2>运行概览</h2><div class="sub">实时状态与近 14 日流量</div></div>
+            <button class="small" id="btn-refresh-dash">刷新数据</button>
           </div>
           <div class="stats" id="dash-stats"></div>
           <div class="card" style="margin-top:1rem">
@@ -98,21 +122,53 @@
 
         <section id="tab-inbounds" class="tab hidden">
           <div class="page-head">
-            <div><h2>入站 / 节点</h2><div class="sub">模板一键填充 · 分区可折叠 · 保留自定义</div></div>
+            <div><h2>入站节点</h2><div class="sub">3x-ui 风格列表 · 模板快速创建 · 侧滑编辑</div></div>
             <div class="row" style="margin:0">
-              <button type="button" id="btn-in-new" class="primary">新建节点</button>
-              <button type="button" id="btn-reality">一键 Reality</button>
-              <button type="button" id="btn-in-toggle" class="ghost">折叠编辑器</button>
+              <button type="button" id="btn-in-new" class="primary">＋ 新建节点</button>
+              <button type="button" id="btn-reality" class="ghost">一键 Reality</button>
             </div>
           </div>
 
-          <div class="card editor-shell" id="in-editor">
+          <div class="tpl-chips" id="in-quick-tpl">
+            <span class="muted" style="margin-right:.35rem">快捷模板</span>
+            <button type="button" class="chip-btn" data-tpl="vless-reality">Reality Vision</button>
+            <button type="button" class="chip-btn" data-tpl="vless-ws-tls">VLESS WS+TLS</button>
+            <button type="button" class="chip-btn" data-tpl="vless-grpc-tls">VLESS gRPC</button>
+            <button type="button" class="chip-btn" data-tpl="vmess-ws-tls">VMess WS</button>
+            <button type="button" class="chip-btn" data-tpl="trojan-tcp-tls">Trojan TLS</button>
+            <button type="button" class="chip-btn" data-tpl="ss-tcp">Shadowsocks</button>
+          </div>
+
+          <div class="toolbar list-toolbar">
+            <input id="in-search" placeholder="搜索名称 / 协议 / 端口 / 备注…" style="flex:1;min-width:160px" />
+            <select id="in-filter-proto" style="width:auto;min-width:120px">
+              <option value="">全部协议</option>
+              <option value="vless">vless</option>
+              <option value="vmess">vmess</option>
+              <option value="trojan">trojan</option>
+              <option value="shadowsocks">shadowsocks</option>
+            </select>
+            <select id="in-filter-sec" style="width:auto;min-width:120px">
+              <option value="">全部安全</option>
+              <option value="reality">reality</option>
+              <option value="tls">tls</option>
+              <option value="none">none</option>
+            </select>
+            <span class="muted" id="in-count"></span>
+          </div>
+
+          <div id="inbound-list" class="list node-list"></div>
+
+          <!-- 侧滑编辑抽屉 -->
+          <div class="drawer hidden" id="in-drawer">
+            <div class="drawer-backdrop" id="in-drawer-backdrop"></div>
+            <div class="drawer-panel editor-shell" id="in-editor">
             <div class="editor-head" id="in-editor-head">
               <div>
                 <h3 id="in-editor-title" style="margin:0">新建节点</h3>
                 <div class="muted" id="in-editor-hint" style="margin-top:.25rem">先选模板，再按需微调。各分区可折叠。</div>
               </div>
-              <button type="button" class="small ghost" id="btn-in-collapse" title="折叠">▾ 折叠</button>
+              <button type="button" class="small ghost" id="btn-in-close" title="关闭">✕ 关闭</button>
             </div>
 
             <div class="editor-body" id="in-editor-body">
@@ -404,15 +460,14 @@
               </details>
 
               <div class="row editor-actions">
-                <button type="button" id="btn-in-save" class="primary">保存节点</button>
+                <button type="button" id="btn-in-save" class="primary">保存并下发</button>
                 <button type="button" id="btn-in-reset" class="ghost">重置</button>
                 <button type="button" id="btn-in-fold-all" class="ghost">全部折叠</button>
                 <button type="button" id="btn-in-expand-all" class="ghost">全部展开</button>
               </div>
             </div>
+            </div>
           </div>
-
-          <div id="inbound-list" class="list" style="margin-top:1rem"></div>
         </section>
 
         <section id="tab-outbounds" class="tab hidden">
@@ -577,16 +632,12 @@
         </section>
 
         <section id="tab-sub" class="tab hidden">
-          <div class="page-head"><div><h2>我的订阅</h2></div></div>
-          <div class="card">
-            <div class="muted">通用 / v2rayN</div>
-            <div class="mono" id="sub-url"></div>
-            <div class="muted">Clash Meta</div>
-            <div class="mono" id="sub-clash"></div>
-            <div class="muted">Sing-box</div>
-            <div class="mono" id="sub-singbox"></div>
-            <div class="muted">Surge</div>
-            <div class="mono" id="sub-surge"></div>
+          <div class="page-head"><div><h2>我的订阅</h2><div class="sub">一键复制到客户端</div></div></div>
+          <div class="card sub-card">
+            <div class="sub-row"><div><div class="muted">通用 / v2rayN</div><div class="mono" id="sub-url"></div></div><button type="button" class="small" data-copy-el="sub-url">复制</button></div>
+            <div class="sub-row"><div><div class="muted">Clash Meta</div><div class="mono" id="sub-clash"></div></div><button type="button" class="small" data-copy-el="sub-clash">复制</button></div>
+            <div class="sub-row"><div><div class="muted">Sing-box</div><div class="mono" id="sub-singbox"></div></div><button type="button" class="small" data-copy-el="sub-singbox">复制</button></div>
+            <div class="sub-row"><div><div class="muted">Surge</div><div class="mono" id="sub-surge"></div></div><button type="button" class="small" data-copy-el="sub-surge">复制</button></div>
           </div>
         </section>
 
@@ -620,16 +671,50 @@
           </div>
         </section>
       </main>
+      </div>
     </div>
   </div>
 
   <div id="modal" class="modal hidden">
     <div class="modal-body">
-      <h3 id="modal-title">安装命令</h3>
+      <div class="modal-head">
+        <h3 id="modal-title" style="margin:0">安装命令</h3>
+        <button type="button" class="small ghost" id="modal-close">✕</button>
+      </div>
       <pre id="install-cmd" class="mono"></pre>
-      <button id="modal-close">关闭</button>
+      <div class="row" style="margin-top:.75rem">
+        <button type="button" class="primary" id="modal-copy">复制内容</button>
+        <button type="button" class="ghost" id="modal-close-2">关闭</button>
+      </div>
     </div>
   </div>
+
+  <div id="confirm-modal" class="modal hidden">
+    <div class="modal-body modal-sm">
+      <h3 id="confirm-title" style="margin:0 0 .5rem">确认操作</h3>
+      <p id="confirm-msg" class="muted" style="margin:0 0 1rem;line-height:1.5"></p>
+      <div class="row" style="margin:0;justify-content:flex-end">
+        <button type="button" class="ghost" id="confirm-cancel">取消</button>
+        <button type="button" class="primary danger-fill" id="confirm-ok">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="result-modal" class="modal hidden">
+    <div class="modal-body">
+      <div class="modal-head">
+        <h3 id="result-title" style="margin:0">完成</h3>
+        <button type="button" class="small ghost" id="result-close">✕</button>
+      </div>
+      <pre id="result-body" class="mono"></pre>
+      <div class="row" style="margin-top:.75rem">
+        <button type="button" class="primary" id="result-copy">复制</button>
+        <button type="button" class="ghost" id="result-close-2">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-stack" id="toast-stack"></div>
   <div class="theme-toast" id="theme-toast"></div>
   <script src="/static/app.js"></script>
 </body>

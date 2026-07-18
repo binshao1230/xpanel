@@ -35,6 +35,108 @@ function escapeHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
   );
 }
+
+const PAGE_META = {
+  dash: { title: "仪表盘", sub: "总览在线节点、流量与趋势" },
+  servers: { title: "服务器", sub: "主控 · Agent · 一键部署" },
+  inbounds: { title: "入站节点", sub: "模板创建 · 侧滑编辑 · 一键复制" },
+  outbounds: { title: "出站 / 路由", sub: "WARP、分流规则" },
+  tunnels: { title: "中转隧道", sub: "端口转发" },
+  plans: { title: "套餐", sub: "流量与有效期" },
+  users: { title: "用户 / 续费", sub: "账号与配额" },
+  invites: { title: "邀请码", sub: "注册绑定套餐" },
+  nodes: { title: "外部节点", sub: "导入分享链接" },
+  certs: { title: "证书 ACME", sub: "申请与下发" },
+  nginx: { title: "Nginx", sub: "配置草稿" },
+  traffic: { title: "流量", sub: "用量统计" },
+  speed: { title: "测速", sub: "TCP / TLS 连通" },
+  links: { title: "URI 分享", sub: "节点链接一览" },
+  sub: { title: "我的订阅", sub: "一键复制到客户端" },
+  settings: { title: "系统设置", sub: "站点与主题" },
+};
+
+function toast(msg, type = "info", ms = 2800) {
+  const stack = $("#toast-stack");
+  if (!stack) {
+    showThemeToast(String(msg));
+    return;
+  }
+  const el = document.createElement("div");
+  el.className = "toast " + (type || "info");
+  el.textContent = String(msg);
+  stack.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = "0";
+    el.style.transition = "opacity .25s ease";
+    setTimeout(() => el.remove(), 280);
+  }, ms);
+}
+
+function notify(msg, type = "ok") {
+  const s = String(msg ?? "");
+  if (s.includes("\n") || s.length > 120) showResult("提示", s);
+  else toast(s, type);
+}
+
+async function copyText(text) {
+  const t = String(text ?? "");
+  if (!t) throw new Error("empty");
+  try {
+    await navigator.clipboard.writeText(t);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = t;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  toast("已复制", "ok", 1600);
+}
+
+function uiConfirm(message, title = "确认操作") {
+  return new Promise((resolve) => {
+    const modal = $("#confirm-modal");
+    if (!modal) {
+      resolve(window.confirm(message));
+      return;
+    }
+    $("#confirm-title").textContent = title;
+    $("#confirm-msg").textContent = message;
+    modal.classList.remove("hidden");
+    const ok = $("#confirm-ok");
+    const cancel = $("#confirm-cancel");
+    const done = (v) => {
+      modal.classList.add("hidden");
+      ok.onclick = null;
+      cancel.onclick = null;
+      resolve(v);
+    };
+    ok.onclick = () => done(true);
+    cancel.onclick = () => done(false);
+  });
+}
+
+function showResult(title, body) {
+  if ($("#result-title")) $("#result-title").textContent = title || "完成";
+  if ($("#result-body")) $("#result-body").textContent = body || "";
+  $("#result-modal")?.classList.remove("hidden");
+}
+function closeResult() {
+  $("#result-modal")?.classList.add("hidden");
+}
+function setSideOpen(open) {
+  $("#view-main")?.classList.toggle("side-open", !!open);
+}
+function openNodeDrawer() {
+  $("#in-drawer")?.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+function closeNodeDrawer() {
+  $("#in-drawer")?.classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
 // —— 妙妙屋同款主题：light → dark → system 循环 ——
 const THEME_MODES = ["light", "dark", "system"];
 const THEME_LABELS = {
@@ -244,13 +346,46 @@ $$("#nav .nav").forEach((btn) => { btn.onclick = () => switchTab(btn.dataset.tab
 const themeCycleBtn = $("#theme-cycle");
 if (themeCycleBtn) themeCycleBtn.onclick = () => cycleTheme();
 $("#btn-logout").onclick = () => { localStorage.removeItem("xpanel_token"); location.reload(); };
-$("#modal-close").onclick = () => $("#modal").classList.add("hidden");
+$("#modal-close") && ($("#modal-close").onclick = () => $("#modal").classList.add("hidden"));
+$("#modal-close-2") && ($("#modal-close-2").onclick = () => $("#modal").classList.add("hidden"));
+$("#modal-copy") && ($("#modal-copy").onclick = () => copyText($("#install-cmd")?.textContent || "").catch(() => {}));
+$("#result-close") && ($("#result-close").onclick = closeResult);
+$("#result-close-2") && ($("#result-close-2").onclick = closeResult);
+$("#result-copy") && ($("#result-copy").onclick = () => copyText($("#result-body")?.textContent || "").catch(() => {}));
+$("#btn-side-toggle") && ($("#btn-side-toggle").onclick = () => {
+  const open = !($("#view-main")?.classList.contains("side-open"));
+  setSideOpen(open);
+});
+$("#side-mask") && ($("#side-mask").onclick = () => setSideOpen(false));
+$("#btn-global-refresh") && ($("#btn-global-refresh").onclick = () => {
+  const active = document.querySelector("#nav .nav.active");
+  switchTab(active?.dataset.tab || "dash");
+  toast("已刷新", "ok", 1200);
+});
+$$("#dash-quick .qa-card").forEach((b) => {
+  b.onclick = () => {
+    const go = b.dataset.go;
+    if (go) switchTab(go);
+    if (go === "inbounds") setTimeout(() => { resetInboundForm(); openNodeDrawer(); }, 80);
+  };
+});
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-copy-el]");
+  if (!btn) return;
+  const el = document.getElementById(btn.dataset.copyEl);
+  if (el) copyText(el.textContent).catch((err) => toast(err.message, "err"));
+});
 
 function switchTab(name) {
   $$("#nav .nav").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
   $$(".tab").forEach((t) => t.classList.add("hidden"));
   const el = $("#tab-" + name);
   if (el) el.classList.remove("hidden");
+  const meta = PAGE_META[name] || { title: name, sub: "" };
+  if ($("#page-title")) $("#page-title").textContent = meta.title;
+  if ($("#page-sub")) $("#page-sub").textContent = meta.sub;
+  setSideOpen(false);
+  state.currentTab = name;
   const loaders = {
     dash: refreshDash,
     servers: refreshServers,
@@ -268,7 +403,7 @@ function switchTab(name) {
     links: refreshLinks,
     settings: refreshSettings,
   };
-  if (loaders[name]) loaders[name]().catch((e) => alert(e.message));
+  if (loaders[name]) loaders[name]().catch((e) => toast(e.message, "err"));
 }
 
 function drawChart(series) {
@@ -369,19 +504,20 @@ async function refreshServers() {
         <button class="small danger" data-act="del" data-id="${s.id}">删除</button>
       </div>
     </div>`;
-  }).join("") || '<p class="muted">暂无服务器</p>';
+  }).join("") || `<div class="empty-state"><h3>还没有服务器</h3><p>添加一台并安装 Agent 即可下发节点</p></div>`;
   box.onclick = async (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
     const id = btn.dataset.id;
     if (btn.dataset.act === "del") {
-      if (!confirm("删除服务器？")) return;
+      if (!(await uiConfirm("删除后 Agent 将无法再连接，确定删除该服务器？", "删除服务器"))) return;
       await api("/api/servers/" + id, { method: "DELETE" });
+      toast("已删除服务器", "ok");
       await refreshServers();
     }
     if (btn.dataset.act === "bump") {
       await api("/api/servers/" + id + "/bump-config", { method: "POST", body: "{}" });
-      alert("已触发下发");
+      toast("已触发配置下发", "ok");
       await refreshServers();
     }
     if (btn.dataset.act === "install") {
@@ -606,16 +742,6 @@ function parseSettingsForm(settings) {
   return { uuid, flow, password, method, pbk: (st.xpanelMeta && st.xpanelMeta.publicKey) || "" };
 }
 
-function setEditorCollapsed(collapsed) {
-  const shell = $("#in-editor");
-  if (!shell) return;
-  shell.classList.toggle("is-collapsed", !!collapsed);
-  const btn = $("#btn-in-collapse");
-  if (btn) btn.textContent = collapsed ? "▸ 展开" : "▾ 折叠";
-  const top = $("#btn-in-toggle");
-  if (top) top.textContent = collapsed ? "展开编辑器" : "折叠编辑器";
-}
-
 function setFoldsOpen(open) {
   $$("#in-editor details.fold").forEach((d) => {
     d.open = !!open;
@@ -696,15 +822,12 @@ function resetInboundForm() {
   $("#in-stream-json").value = "";
   if ($("#in-use-json")) $("#in-use-json").checked = false;
   $("#in-editor-hint").textContent = "先选模板，再按需微调。各分区可折叠。";
-  setEditorCollapsed(false);
-  // 基础与模板展开，密钥/高级折叠
   $$("#in-editor details.fold").forEach((d, i) => {
     d.open = i < 3;
   });
 }
 
 function fillInboundForm(inb) {
-  setEditorCollapsed(false);
   $("#in-id").value = inb.id || "";
   $("#in-editor-title").textContent = inb.id ? `编辑节点 #${inb.id}` : "新建节点";
   if (inb.server_id) $("#in-server").value = inb.server_id;
@@ -855,63 +978,130 @@ function collectInboundPayload() {
   return payload;
 }
 
-async function refreshInbounds() {
-  const data = await api("/api/inbounds");
-  const list = data.inbounds || [];
-  $("#inbound-list").innerHTML = list.map((inb) => {
+state.inboundsCache = [];
+state.inboundLinks = {};
+
+function matchInboundFilter(inb, stream) {
+  const q = ($("#in-search")?.value || "").trim().toLowerCase();
+  const protoF = $("#in-filter-proto")?.value || "";
+  const secF = $("#in-filter-sec")?.value || "";
+  const net = stream.network || "tcp";
+  const sec = stream.security || "none";
+  if (protoF && inb.protocol !== protoF) return false;
+  if (secF && sec !== secF) return false;
+  if (!q) return true;
+  const hay = [inb.share_name, inb.tag, inb.protocol, inb.remark, inb.port, net, sec].join(" ").toLowerCase();
+  return hay.includes(q);
+}
+
+function renderInboundList() {
+  const all = state.inboundsCache || [];
+  const list = all.filter((inb) => {
+    let stream = {};
+    try { stream = JSON.parse(inb.stream_json || "{}"); } catch { /* */ }
+    return matchInboundFilter(inb, stream);
+  });
+  if ($("#in-count")) $("#in-count").textContent = `共 ${list.length} / ${all.length}`;
+  const box = $("#inbound-list");
+  if (!box) return;
+  if (!list.length) {
+    box.innerHTML = `<div class="empty-state"><h3>${all.length ? "没有匹配的节点" : "还没有节点"}</h3>
+      <p>${all.length ? "试试清空搜索或筛选" : "用快捷模板或「新建节点」创建"}</p>
+      ${!all.length ? '<button type="button" class="primary" id="btn-empty-new">+ 新建节点</button>' : ""}</div>`;
+    const bn = $("#btn-empty-new");
+    if (bn) bn.onclick = () => { resetInboundForm(); openNodeDrawer(); };
+    return;
+  }
+  box.innerHTML = list.map((inb) => {
     let stream = {};
     try { stream = JSON.parse(inb.stream_json || "{}"); } catch { /* */ }
     const net = stream.network || "tcp";
     const sec = stream.security || "none";
     const en = inb.enabled !== false;
+    const link = state.inboundLinks[inb.id] || "";
     return `<div class="item">
-      <div>
-        <strong>${escapeHtml(inb.share_name || inb.tag)}</strong>
-        <span class="chip">${escapeHtml(inb.protocol)}</span>
-        <span class="chip">${escapeHtml(net)}/${escapeHtml(sec)}</span>
-        <span class="chip">:${inb.port}</span>
-        ${en ? "" : '<span class="chip off">已禁用</span>'}
-        ${inb.cert_id ? '<span class="chip">TLS#' + inb.cert_id + "</span>" : ""}
-        <div class="meta">tag ${escapeHtml(inb.tag)} · server ${escapeHtml(String(inb.server_id).slice(0, 8))}… · x${inb.multiplier || 1}
-        ${inb.remark ? " · " + escapeHtml(inb.remark) : ""}</div>
+      <div class="item-main">
+        <div class="item-title">
+          <strong>${escapeHtml(inb.share_name || inb.tag)}</strong>
+          <span class="chip">${escapeHtml(inb.protocol)}</span>
+          <span class="chip">${escapeHtml(net)}/${escapeHtml(sec)}</span>
+          <span class="chip">:${inb.port}</span>
+          ${en ? '<span class="chip on">启用</span>' : '<span class="chip off">禁用</span>'}
+        </div>
+        <div class="meta">tag ${escapeHtml(inb.tag)} · x${inb.multiplier || 1}${inb.remark ? " · " + escapeHtml(inb.remark) : ""}</div>
       </div>
-      <div class="row" style="margin:0">
+      <div class="item-actions row">
         <button class="small" data-act="edit" data-id="${inb.id}">编辑</button>
+        <button class="small" data-act="copy" data-id="${inb.id}" ${link ? "" : "disabled"}>复制链接</button>
+        <button class="small" data-act="clone" data-id="${inb.id}">克隆</button>
         <button class="small" data-act="toggle" data-id="${inb.id}" data-en="${en ? 0 : 1}">${en ? "禁用" : "启用"}</button>
         <button class="small danger" data-act="del" data-id="${inb.id}">删除</button>
       </div>
     </div>`;
-  }).join("") || '<p class="muted">暂无入站节点，点「新建节点」用模板创建</p>';
+  }).join("");
+}
 
-  $("#inbound-list").onclick = async (e) => {
+async function refreshInbounds() {
+  const [data, linksData] = await Promise.all([
+    api("/api/inbounds"),
+    api("/api/inbounds/links").catch(() => ({ links: [] })),
+  ]);
+  state.inboundsCache = data.inbounds || [];
+  state.inboundLinks = {};
+  (linksData.links || []).forEach((l) => { if (l.id != null) state.inboundLinks[l.id] = l.link || ""; });
+  renderInboundList();
+  const box = $("#inbound-list");
+  if (!box) return;
+  box.onclick = async (e) => {
     const btn = e.target.closest("button[data-act]");
     if (!btn) return;
     const id = btn.dataset.id;
     if (btn.dataset.act === "del") {
-      if (!confirm("删除该节点？")) return;
-      await api("/api/inbounds/" + id, { method: "DELETE" });
-      await refreshInbounds();
+      if (!(await uiConfirm("删除后配置将从 Agent 移除，确定？", "删除节点"))) return;
+      try {
+        await api("/api/inbounds/" + id, { method: "DELETE" });
+        toast("节点已删除", "ok");
+        await refreshInbounds();
+      } catch (err) { toast(err.message, "err"); }
       return;
     }
     if (btn.dataset.act === "toggle") {
       try {
-        await api("/api/inbounds/" + id, {
-          method: "PUT",
-          body: JSON.stringify({ enabled: btn.dataset.en === "1" }),
-        });
-      } catch (err) {
-        alert(err.message);
-      }
+        await api("/api/inbounds/" + id, { method: "PUT", body: JSON.stringify({ enabled: btn.dataset.en === "1" }) });
+        toast(btn.dataset.en === "1" ? "已启用" : "已禁用", "ok");
+      } catch (err) { toast(err.message, "err"); }
       await refreshInbounds();
+      return;
+    }
+    if (btn.dataset.act === "copy") {
+      const link = state.inboundLinks[id];
+      if (!link) return toast("暂无分享链接", "warn");
+      try { await copyText(link); } catch (err) { toast(err.message, "err"); }
+      return;
+    }
+    if (btn.dataset.act === "clone") {
+      try {
+        const r = await api("/api/inbounds/" + id);
+        const inb = r.inbound || r;
+        fillInboundForm(inb);
+        $("#in-id").value = "";
+        $("#in-editor-title").textContent = "克隆节点（新建）";
+        $("#in-tag").value = (inb.tag || "node") + "-copy";
+        if ($("#in-share-name")) $("#in-share-name").value = (inb.share_name || inb.tag || "") + " 副本";
+        const p = (Number(inb.port) || 443) + 1;
+        setTplValue("#in-port-tpl", "#wrap-in-port", "#in-port", String(p));
+        $("#in-port").value = p;
+        openNodeDrawer();
+        toast("已填入克隆内容", "info");
+      } catch (err) { toast(err.message, "err"); }
       return;
     }
     if (btn.dataset.act === "edit") {
       try {
         const r = await api("/api/inbounds/" + id);
         fillInboundForm(r.inbound || r);
-      } catch (err) {
-        alert(err.message);
-      }
+        openNodeDrawer();
+      } catch (err) { toast(err.message, "err"); }
     }
   };
 }
@@ -946,31 +1136,43 @@ function initInboundEditorUI() {
     $("#in-template").onchange = () => applyNodeTemplate($("#in-template").value);
   }
 
-  const collapse = () => {
-    const shell = $("#in-editor");
-    setEditorCollapsed(!(shell && shell.classList.contains("is-collapsed")));
-  };
-  if ($("#btn-in-collapse")) $("#btn-in-collapse").onclick = (e) => { e.stopPropagation(); collapse(); };
-  if ($("#btn-in-toggle")) $("#btn-in-toggle").onclick = collapse;
-  if ($("#in-editor-head")) {
-    $("#in-editor-head").onclick = (e) => {
-      if (e.target.closest("button")) return;
-      collapse();
-    };
-  }
+  if ($("#btn-in-close")) $("#btn-in-close").onclick = () => closeNodeDrawer();
+  if ($("#in-drawer-backdrop")) $("#in-drawer-backdrop").onclick = () => closeNodeDrawer();
   if ($("#btn-in-fold-all")) $("#btn-in-fold-all").onclick = () => setFoldsOpen(false);
   if ($("#btn-in-expand-all")) $("#btn-in-expand-all").onclick = () => setFoldsOpen(true);
 
-  // default: editor expanded but ready for templates
-  setEditorCollapsed(false);
+  ["#in-search", "#in-filter-proto", "#in-filter-sec"].forEach((sel) => {
+    const el = $(sel);
+    if (!el) return;
+    el.oninput = el.onchange = () => renderInboundList();
+  });
+
+  $$("#in-quick-tpl .chip-btn").forEach((b) => {
+    b.onclick = async () => {
+      await fillServerSelects();
+      await fillCertSelect();
+      resetInboundForm();
+      if ($("#in-template")) $("#in-template").value = b.dataset.tpl;
+      applyNodeTemplate(b.dataset.tpl);
+      openNodeDrawer();
+    };
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if ($("#in-drawer") && !$("#in-drawer").classList.contains("hidden")) closeNodeDrawer();
+    else if ($("#result-modal") && !$("#result-modal").classList.contains("hidden")) closeResult();
+    else if ($("#modal") && !$("#modal").classList.contains("hidden")) $("#modal").classList.add("hidden");
+  });
 }
 
 initInboundEditorUI();
 
-$("#btn-in-new") && ($("#btn-in-new").onclick = () => {
+$("#btn-in-new") && ($("#btn-in-new").onclick = async () => {
+  await fillServerSelects();
+  await fillCertSelect();
   resetInboundForm();
-  setEditorCollapsed(false);
-  $("#in-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  openNodeDrawer();
 });
 $("#btn-in-reset") && ($("#btn-in-reset").onclick = () => resetInboundForm());
 $("#btn-in-fill-json") && ($("#btn-in-fill-json").onclick = () => {
@@ -1001,14 +1203,17 @@ $("#btn-in-fill-json") && ($("#btn-in-fill-json").onclick = () => {
   }
   $("#in-settings-json").value = JSON.stringify(settings, null, 2);
   $("#in-stream-json").value = JSON.stringify(stream, null, 2);
+  toast("已生成 JSON 预览", "ok", 1500);
 });
 
 $("#btn-in-save") && ($("#btn-in-save").onclick = async () => {
+  const saveBtn = $("#btn-in-save");
   try {
     const id = ($("#in-id").value || "").trim();
     const payload = collectInboundPayload();
-    if (!payload.server_id) return alert("请选择服务器");
-    if (!payload.port) return alert("端口无效");
+    if (!payload.server_id) return toast("请选择服务器", "warn");
+    if (!payload.port) return toast("端口无效", "warn");
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "保存中…"; }
     let r;
     if (id) {
       r = await api("/api/inbounds/" + id, { method: "PUT", body: JSON.stringify(payload) });
@@ -1021,32 +1226,46 @@ $("#btn-in-save") && ($("#btn-in-save").onclick = async () => {
     if (r.settings?.clients?.[0]?.password) msg += "\n\nTrojan 密码: " + r.settings.clients[0].password;
     if (r.settings?.clients?.[0]?.id) msg += "\n\nUUID: " + r.settings.clients[0].id;
     if (r.settings?.xpanelMeta?.publicKey) msg += "\n\nReality publicKey:\n" + r.settings.xpanelMeta.publicKey;
-    alert(msg);
+    toast(id ? "节点已更新并下发" : "节点已创建并下发", "ok");
+    showResult(id ? "更新成功" : "创建成功", msg);
     resetInboundForm();
-    setEditorCollapsed(true);
+    closeNodeDrawer();
     await refreshInbounds();
   } catch (e) {
-    alert(e.message);
+    toast(e.message, "err");
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "保存并下发"; }
   }
 });
 
-$("#btn-reality").onclick = async () => {
-  const server_id = $("#in-server").value;
-  if (!server_id) return alert("先选服务器");
-  const r = await api("/api/inbounds/quick-reality", {
-    method: "POST",
-    body: JSON.stringify({
-      server_id,
-      port: Number(getTplValue("#in-port-tpl", "#in-port")) || 443,
-      dest: getTplValue("#in-dest-tpl", "#in-dest") || undefined,
-      sni: getTplValue("#in-sni-tpl", "#in-sni") || undefined,
-      flow: getSelectOrCustomSimple("#in-flow", "#in-flow-custom") || undefined,
-      name: $("#in-tag").value.trim() || undefined,
-    }),
-  });
-  alert("Reality 已创建\nPublicKey:\n" + r.public_key + "\n\n分享链接:\n" + r.share_link);
-  await refreshInbounds();
-};
+$("#btn-reality") && ($("#btn-reality").onclick = async () => {
+  await fillServerSelects();
+  await fillCertSelect();
+  let server_id = $("#in-server")?.value;
+  if (!server_id && state.servers?.[0]) {
+    server_id = state.servers[0].id;
+    if ($("#in-server")) $("#in-server").value = server_id;
+  }
+  if (!server_id) return toast("请先添加并选择服务器", "warn");
+  try {
+    const r = await api("/api/inbounds/quick-reality", {
+      method: "POST",
+      body: JSON.stringify({
+        server_id,
+        port: Number(getTplValue("#in-port-tpl", "#in-port")) || 443,
+        dest: getTplValue("#in-dest-tpl", "#in-dest") || undefined,
+        sni: getTplValue("#in-sni-tpl", "#in-sni") || undefined,
+        flow: getSelectOrCustomSimple("#in-flow", "#in-flow-custom") || "xtls-rprx-vision",
+        name: $("#in-tag")?.value.trim() || undefined,
+      }),
+    });
+    toast("Reality 节点已创建", "ok");
+    showResult("Reality 已创建", `PublicKey:\n${r.public_key}\n\n分享链接:\n${r.share_link || ""}`);
+    await refreshInbounds();
+  } catch (e) {
+    toast(e.message, "err");
+  }
+});
 
 async function refreshOutbounds() {
   const data = await api("/api/outbounds");
@@ -1070,7 +1289,7 @@ async function refreshOutbounds() {
           body: JSON.stringify({ enabled: btn.dataset.en === "1" }),
         });
       } catch (err) {
-        alert("启用失败（可能密钥未填完整）: " + err.message);
+        toast("启用失败: " + err.message, "err");
       }
     }
     await refreshOutbounds();
@@ -1092,7 +1311,7 @@ $("#btn-warp").onclick = async () => {
   const server_id = $("#ob-server").value;
   if (!server_id) return;
   const r = await api("/api/outbounds/quick-warp", { method: "POST", body: JSON.stringify({ server_id }) });
-  alert(r.note || "ok");
+  toast(r.note || "ok", "ok");
   await refreshOutbounds();
   await refreshRoutes();
 };
@@ -1207,7 +1426,7 @@ async function refreshUsers() {
     if (!btn) return;
     const id = btn.dataset.id;
     if (btn.dataset.act === "del") {
-      if (!confirm("删除用户？")) return;
+      if (!(await uiConfirm("确定删除该用户？", "删除用户"))) return;
       await api("/api/users/" + id, { method: "DELETE" });
     }
     if (btn.dataset.act === "renew") await api("/api/users/" + id, { method: "PUT", body: JSON.stringify({ renew_days: 30 }) });
@@ -1246,7 +1465,8 @@ $("#btn-add-inv").onclick = async () => {
       count: Number($("#inv-count").value) || 1,
     }),
   });
-  alert("已生成: " + (r.codes || []).join(", "));
+  toast("已生成邀请码", "ok");
+  if ((r.codes || []).length) showResult("邀请码", (r.codes || []).join("\n"));
   await refreshInvites();
 };
 
@@ -1265,7 +1485,7 @@ async function refreshExt() {
 }
 $("#btn-import").onclick = async () => {
   const r = await api("/api/nodes/external", { method: "POST", body: JSON.stringify({ links: $("#ext-links").value }) });
-  alert("导入 " + r.imported);
+  toast("导入 " + r.imported + " 条", "ok");
   $("#ext-links").value = "";
   await refreshExt();
 };
@@ -1291,13 +1511,13 @@ async function refreshCerts() {
     if (btn.dataset.act === "del") await api("/api/certs/" + btn.dataset.id, { method: "DELETE" });
     if (btn.dataset.act === "deploy") {
       await api("/api/certs/" + btn.dataset.id + "/deploy", { method: "POST", body: "{}" });
-      alert("已下发");
+      toast("已下发", "ok");
     }
     if (btn.dataset.act === "renew") {
       try {
         await api("/api/certs/" + btn.dataset.id + "/renew", { method: "POST", body: "{}" });
-        alert("续期成功");
-      } catch (err) { alert(err.message); }
+        toast("续期成功", "ok");
+      } catch (err) { toast(err.message, "err"); }
     }
     await refreshCerts();
   };
@@ -1317,7 +1537,7 @@ $("#btn-add-cert").onclick = async () => {
 };
 $("#btn-acme").onclick = async () => {
   const domain = $("#acme-domain").value.trim();
-  if (!domain) return alert("填写域名");
+  if (!domain) return toast("填写域名", "warn");
   const btn = $("#btn-acme");
   btn.disabled = true;
   try {
@@ -1336,10 +1556,11 @@ $("#btn-acme").onclick = async () => {
         auto_renew: true,
       }),
     });
-    alert("成功 id=" + r.id + " 到期 " + new Date(r.expire_at * 1000).toLocaleString());
+    toast("证书申请成功", "ok");
+    showResult("证书成功", "id=" + r.id + "\n到期 " + new Date(r.expire_at * 1000).toLocaleString());
     await refreshCerts();
   } catch (e) {
-    alert(e.message);
+    toast(e.message, "err");
     await refreshCerts();
   }
   btn.disabled = false;
@@ -1355,7 +1576,7 @@ $("#btn-save-ngx").onclick = async () => {
     method: "PUT",
     body: JSON.stringify({ server_id: $("#ngx-server").value, content: $("#ngx-content").value }),
   });
-  alert("已保存");
+  toast("已保存", "ok");
 };
 
 async function refreshTraffic() {
@@ -1440,7 +1661,7 @@ $("#btn-save-set").onclick = async () => {
     }),
   });
   setTheme(themeMode);
-  alert("已保存");
+  toast("已保存", "ok");
 };
 $("#btn-backup").onclick = async () => {
   const res = await fetch("/api/backup/export", { headers: { Authorization: "Bearer " + state.token } });
