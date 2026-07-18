@@ -97,24 +97,114 @@
         </section>
 
         <section id="tab-inbounds" class="tab hidden">
-          <div class="page-head"><div><h2>入站 / 节点</h2><div class="sub">VLESS Reality / TLS / 多协议</div></div></div>
-          <div class="card">
-            <div class="row wrap">
-              <select id="in-server"></select>
-              <select id="in-proto">
-                <option value="vless">vless</option>
-                <option value="vmess">vmess</option>
-                <option value="trojan">trojan</option>
-                <option value="shadowsocks">shadowsocks</option>
-              </select>
-              <input id="in-port" type="number" value="443" style="width:100px" />
-              <input id="in-tag" placeholder="标签" style="width:120px" />
-              <select id="in-cert"><option value="0">无 TLS 证书</option></select>
-              <button id="btn-add-in" class="primary">创建入站</button>
-              <button id="btn-reality">一键 Reality</button>
+          <div class="page-head">
+            <div><h2>入站 / 节点</h2><div class="sub">自由创建 · 完整修改 · 传输层 / TLS / Reality / 高级 JSON</div></div>
+            <div class="row" style="margin:0">
+              <button type="button" id="btn-in-new" class="primary">新建节点</button>
+              <button type="button" id="btn-reality">一键 Reality</button>
             </div>
           </div>
-          <div id="inbound-list" class="list"></div>
+
+          <div class="card" id="in-editor">
+            <h3 id="in-editor-title">新建节点</h3>
+            <input type="hidden" id="in-id" value="" />
+            <div class="grid2">
+              <label>服务器
+                <select id="in-server"></select>
+              </label>
+              <label>协议
+                <select id="in-proto">
+                  <option value="vless">vless</option>
+                  <option value="vmess">vmess</option>
+                  <option value="trojan">trojan</option>
+                  <option value="shadowsocks">shadowsocks</option>
+                </select>
+              </label>
+              <label>端口 <input id="in-port" type="number" value="443" /></label>
+              <label>标签 tag <input id="in-tag" placeholder="vless-443" /></label>
+              <label>分享名称 <input id="in-share-name" placeholder="显示在订阅里的名称" /></label>
+              <label>备注 remark <input id="in-remark" placeholder="可选" /></label>
+              <label>流量倍率 <input id="in-mult" type="number" step="0.1" value="1" /></label>
+              <label>证书
+                <select id="in-cert"><option value="0">无证书 / 自管</option></select>
+              </label>
+            </div>
+
+            <h3 style="margin-top:1rem">传输层</h3>
+            <div class="grid2">
+              <label>network
+                <select id="in-network">
+                  <option value="tcp">tcp</option>
+                  <option value="ws">ws</option>
+                  <option value="grpc">grpc</option>
+                  <option value="h2">h2</option>
+                  <option value="httpupgrade">httpupgrade</option>
+                  <option value="splithttp">splithttp / xhttp</option>
+                </select>
+              </label>
+              <label>security
+                <select id="in-security">
+                  <option value="none">none</option>
+                  <option value="tls">tls</option>
+                  <option value="reality">reality</option>
+                </select>
+              </label>
+              <label>path / serviceName <input id="in-path" placeholder="/path 或 grpc serviceName" /></label>
+              <label>host <input id="in-host" placeholder="Host 头 / h2 host" /></label>
+              <label>SNI / serverName <input id="in-sni" placeholder="www.example.com" /></label>
+              <label>Reality dest <input id="in-dest" placeholder="www.microsoft.com:443" /></label>
+              <label>fingerprint <input id="in-fp" placeholder="chrome" value="chrome" /></label>
+              <label>ALPN <input id="in-alpn" placeholder="h2,http/1.1" /></label>
+              <label>Reality publicKey <input id="in-pbk" placeholder="客户端 pbk" /></label>
+              <label>Reality privateKey <input id="in-priv" placeholder="留空自动生成" /></label>
+              <label>Reality shortId <input id="in-sid" placeholder="留空自动生成" /></label>
+              <label>启用
+                <select id="in-enabled">
+                  <option value="1">启用</option>
+                  <option value="0">禁用</option>
+                </select>
+              </label>
+            </div>
+
+            <h3 style="margin-top:1rem">协议参数</h3>
+            <div class="grid2">
+              <label>UUID / client id <input id="in-uuid" placeholder="留空自动生成" /></label>
+              <label>flow <input id="in-flow" placeholder="xtls-rprx-vision 或空" /></label>
+              <label>密码 password <input id="in-password" placeholder="trojan / ss" /></label>
+              <label>SS method
+                <select id="in-method">
+                  <option value="aes-256-gcm">aes-256-gcm</option>
+                  <option value="aes-128-gcm">aes-128-gcm</option>
+                  <option value="chacha20-ietf-poly1305">chacha20-ietf-poly1305</option>
+                  <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
+                  <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
+                </select>
+              </label>
+            </div>
+
+            <h3 style="margin-top:1rem">高级 · 原始 JSON</h3>
+            <label style="display:flex;align-items:center;gap:.5rem;margin:.5rem 0">
+              <input type="checkbox" id="in-use-json" style="width:auto" />
+              保存时提交高级 JSON（勾选后覆盖上方表单的传输/协议参数，可完全自由改 xray 配置）
+            </label>
+            <div class="grid2">
+              <label>settings_json
+                <textarea id="in-settings-json" rows="8" placeholder='{"clients":[...],"decryption":"none"}'></textarea>
+              </label>
+              <label>stream_json
+                <textarea id="in-stream-json" rows="8" placeholder='streamSettings 完整 JSON'></textarea>
+              </label>
+            </div>
+
+            <div class="row" style="margin-top:1rem">
+              <button type="button" id="btn-in-save" class="primary">保存节点</button>
+              <button type="button" id="btn-in-reset" class="ghost">清空表单</button>
+              <button type="button" id="btn-in-fill-json" class="ghost">从表单生成 JSON</button>
+            </div>
+            <p class="muted" id="in-editor-hint">默认用表单自由配置；需要任意字段时勾选「提交高级 JSON」。保存后自动下发 Agent。</p>
+          </div>
+
+          <div id="inbound-list" class="list" style="margin-top:1rem"></div>
         </section>
 
         <section id="tab-outbounds" class="tab hidden">

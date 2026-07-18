@@ -405,51 +405,325 @@ $("#btn-add-server").onclick = async () => {
   await refreshServers();
 };
 
+function parseStreamForm(stream) {
+  const s = stream || {};
+  const network = s.network || "tcp";
+  const security = s.security || "none";
+  let path = "", host = "", sni = "", dest = "", pbk = "", priv = "", sid = "", fp = "chrome", alpn = "";
+  if (s.wsSettings) {
+    path = s.wsSettings.path || "";
+    host = (s.wsSettings.headers && s.wsSettings.headers.Host) || "";
+  }
+  if (s.grpcSettings) path = s.grpcSettings.serviceName || path;
+  if (s.httpSettings) {
+    path = s.httpSettings.path || path;
+    if (Array.isArray(s.httpSettings.host) && s.httpSettings.host[0]) host = s.httpSettings.host[0];
+  }
+  if (s.httpupgradeSettings) {
+    path = s.httpupgradeSettings.path || path;
+    host = s.httpupgradeSettings.host || host;
+  }
+  if (s.splithttpSettings) {
+    path = s.splithttpSettings.path || path;
+    host = s.splithttpSettings.host || host;
+  }
+  if (s.tlsSettings) {
+    sni = s.tlsSettings.serverName || "";
+    fp = s.tlsSettings.fingerprint || fp;
+    if (Array.isArray(s.tlsSettings.alpn)) alpn = s.tlsSettings.alpn.join(",");
+  }
+  if (s.realitySettings) {
+    dest = s.realitySettings.dest || "";
+    priv = s.realitySettings.privateKey || "";
+    fp = s.realitySettings.fingerprint || fp;
+    if (Array.isArray(s.realitySettings.serverNames) && s.realitySettings.serverNames[0]) {
+      sni = s.realitySettings.serverNames[0];
+    }
+    if (Array.isArray(s.realitySettings.shortIds) && s.realitySettings.shortIds[0]) {
+      sid = s.realitySettings.shortIds[0];
+    }
+  }
+  return { network, security, path, host, sni, dest, pbk, priv, sid, fp, alpn };
+}
+
+function parseSettingsForm(settings) {
+  const st = settings || {};
+  let uuid = "", flow = "", password = "", method = "aes-256-gcm";
+  if (Array.isArray(st.clients) && st.clients[0]) {
+    uuid = st.clients[0].id || "";
+    flow = st.clients[0].flow || "";
+    password = st.clients[0].password || password;
+  }
+  if (st.password) password = st.password;
+  if (st.method) method = st.method;
+  if (st.xpanelMeta && st.xpanelMeta.publicKey) {
+    /* public key for reality */
+  }
+  return { uuid, flow, password, method, pbk: (st.xpanelMeta && st.xpanelMeta.publicKey) || "" };
+}
+
+function resetInboundForm() {
+  $("#in-id").value = "";
+  $("#in-editor-title").textContent = "新建节点";
+  $("#in-port").value = 443;
+  $("#in-tag").value = "";
+  $("#in-share-name").value = "";
+  $("#in-remark").value = "";
+  $("#in-mult").value = 1;
+  $("#in-cert").value = "0";
+  $("#in-network").value = "tcp";
+  $("#in-security").value = "none";
+  $("#in-path").value = "";
+  $("#in-host").value = "";
+  $("#in-sni").value = "";
+  $("#in-dest").value = "";
+  $("#in-fp").value = "chrome";
+  $("#in-alpn").value = "";
+  $("#in-pbk").value = "";
+  $("#in-priv").value = "";
+  $("#in-sid").value = "";
+  $("#in-enabled").value = "1";
+  $("#in-uuid").value = "";
+  $("#in-flow").value = "";
+  $("#in-password").value = "";
+  $("#in-method").value = "aes-256-gcm";
+  $("#in-settings-json").value = "";
+  $("#in-stream-json").value = "";
+  if ($("#in-use-json")) $("#in-use-json").checked = false;
+  $("#in-editor-hint").textContent = "默认用表单自由配置；需要任意字段时勾选「提交高级 JSON」。保存后自动下发 Agent。";
+}
+
+function fillInboundForm(inb) {
+  $("#in-id").value = inb.id || "";
+  $("#in-editor-title").textContent = inb.id ? `编辑节点 #${inb.id}` : "新建节点";
+  if (inb.server_id) $("#in-server").value = inb.server_id;
+  $("#in-proto").value = inb.protocol || "vless";
+  $("#in-port").value = inb.port || 443;
+  $("#in-tag").value = inb.tag || "";
+  $("#in-share-name").value = inb.share_name || "";
+  $("#in-remark").value = inb.remark || "";
+  $("#in-mult").value = inb.multiplier != null ? inb.multiplier : 1;
+  $("#in-cert").value = String(inb.cert_id || 0);
+  $("#in-enabled").value = inb.enabled === false ? "0" : "1";
+
+  let settings = {};
+  let stream = {};
+  try { settings = typeof inb.settings_json === "string" ? JSON.parse(inb.settings_json || "{}") : (inb.settings || {}); } catch { settings = {}; }
+  try { stream = typeof inb.stream_json === "string" ? JSON.parse(inb.stream_json || "{}") : (inb.stream || {}); } catch { stream = {}; }
+
+  const sf = parseSettingsForm(settings);
+  const tf = parseStreamForm(stream);
+  $("#in-uuid").value = sf.uuid;
+  $("#in-flow").value = sf.flow;
+  $("#in-password").value = sf.password;
+  $("#in-method").value = sf.method || "aes-256-gcm";
+  $("#in-network").value = tf.network || "tcp";
+  $("#in-security").value = tf.security || "none";
+  $("#in-path").value = tf.path;
+  $("#in-host").value = tf.host;
+  $("#in-sni").value = tf.sni;
+  $("#in-dest").value = tf.dest;
+  $("#in-fp").value = tf.fp || "chrome";
+  $("#in-alpn").value = tf.alpn;
+  $("#in-pbk").value = sf.pbk || tf.pbk || "";
+  $("#in-priv").value = tf.priv;
+  $("#in-sid").value = tf.sid;
+  $("#in-settings-json").value = JSON.stringify(settings, null, 2);
+  $("#in-stream-json").value = JSON.stringify(stream, null, 2);
+  if ($("#in-use-json")) $("#in-use-json").checked = false;
+  $("#in-editor-hint").textContent = "正在编辑已有节点。改表单后保存即可；要完全自定义 xray 字段请勾选「提交高级 JSON」。";
+  $("#in-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function collectInboundPayload() {
+  const cert_id = Number($("#in-cert").value) || 0;
+  const mult = Number($("#in-mult").value);
+  const payload = {
+    server_id: $("#in-server").value,
+    protocol: $("#in-proto").value,
+    port: Number($("#in-port").value) || 0,
+    tag: $("#in-tag").value.trim(),
+    share_name: $("#in-share-name").value.trim(),
+    remark: $("#in-remark").value.trim(),
+    multiplier: Number.isFinite(mult) && mult > 0 ? mult : 1,
+    cert_id,
+    enable_tls: cert_id > 0 && $("#in-security").value === "tls",
+    network: $("#in-network").value,
+    security: $("#in-security").value,
+    path: $("#in-path").value.trim(),
+    host: $("#in-host").value.trim(),
+    service_name: $("#in-path").value.trim(),
+    sni: $("#in-sni").value.trim(),
+    dest: $("#in-dest").value.trim(),
+    public_key: $("#in-pbk").value.trim(),
+    private_key: $("#in-priv").value.trim(),
+    short_id: $("#in-sid").value.trim(),
+    fingerprint: $("#in-fp").value.trim() || "chrome",
+    alpn: $("#in-alpn").value.trim(),
+    uuid: $("#in-uuid").value.trim(),
+    flow: $("#in-flow").value.trim(),
+    password: $("#in-password").value.trim(),
+    method: $("#in-method").value,
+    enabled: $("#in-enabled").value !== "0",
+  };
+  // 勾选「提交高级 JSON」时才覆盖表单，实现完全自由配置
+  const useJSON = $("#in-use-json") && $("#in-use-json").checked;
+  if (useJSON) {
+    const sj = $("#in-settings-json").value.trim();
+    const stj = $("#in-stream-json").value.trim();
+    if (sj) {
+      try { JSON.parse(sj); } catch (e) { throw new Error("settings_json 不是合法 JSON: " + e.message); }
+      payload.settings_json = sj;
+    }
+    if (stj) {
+      try { JSON.parse(stj); } catch (e) { throw new Error("stream_json 不是合法 JSON: " + e.message); }
+      payload.stream_json = stj;
+    }
+  }
+  return payload;
+}
+
 async function refreshInbounds() {
   const data = await api("/api/inbounds");
-  $("#inbound-list").innerHTML = (data.inbounds || []).map((inb) => `
-    <div class="item"><div>
-      <strong>${escapeHtml(inb.tag)}</strong> · ${escapeHtml(inb.protocol)} :${inb.port}
-      ${inb.cert_id ? ' · <span class="chip">TLS#' + inb.cert_id + "</span>" : ""}
-      <div class="meta">server ${escapeHtml(String(inb.server_id).slice(0, 8))}… · x${inb.multiplier || 1}</div>
-    </div><button class="small danger" data-id="${inb.id}">删除</button></div>`).join("") || '<p class="muted">暂无入站</p>';
+  const list = data.inbounds || [];
+  $("#inbound-list").innerHTML = list.map((inb) => {
+    let stream = {};
+    try { stream = JSON.parse(inb.stream_json || "{}"); } catch { /* */ }
+    const net = stream.network || "tcp";
+    const sec = stream.security || "none";
+    const en = inb.enabled !== false;
+    return `<div class="item">
+      <div>
+        <strong>${escapeHtml(inb.share_name || inb.tag)}</strong>
+        <span class="chip">${escapeHtml(inb.protocol)}</span>
+        <span class="chip">${escapeHtml(net)}/${escapeHtml(sec)}</span>
+        <span class="chip">:${inb.port}</span>
+        ${en ? "" : '<span class="chip off">已禁用</span>'}
+        ${inb.cert_id ? '<span class="chip">TLS#' + inb.cert_id + "</span>" : ""}
+        <div class="meta">tag ${escapeHtml(inb.tag)} · server ${escapeHtml(String(inb.server_id).slice(0, 8))}… · x${inb.multiplier || 1}
+        ${inb.remark ? " · " + escapeHtml(inb.remark) : ""}</div>
+      </div>
+      <div class="row" style="margin:0">
+        <button class="small" data-act="edit" data-id="${inb.id}">编辑</button>
+        <button class="small" data-act="toggle" data-id="${inb.id}" data-en="${en ? 0 : 1}">${en ? "禁用" : "启用"}</button>
+        <button class="small danger" data-act="del" data-id="${inb.id}">删除</button>
+      </div>
+    </div>`;
+  }).join("") || '<p class="muted">暂无入站节点，点上方「新建节点」自由配置</p>';
+
   $("#inbound-list").onclick = async (e) => {
-    const btn = e.target.closest("button[data-id]");
-    if (!btn || !confirm("删除？")) return;
-    await api("/api/inbounds/" + btn.dataset.id, { method: "DELETE" });
-    await refreshInbounds();
+    const btn = e.target.closest("button[data-act]");
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (btn.dataset.act === "del") {
+      if (!confirm("删除该节点？")) return;
+      await api("/api/inbounds/" + id, { method: "DELETE" });
+      await refreshInbounds();
+      return;
+    }
+    if (btn.dataset.act === "toggle") {
+      try {
+        await api("/api/inbounds/" + id, {
+          method: "PUT",
+          body: JSON.stringify({ enabled: btn.dataset.en === "1" }),
+        });
+      } catch (err) {
+        alert(err.message);
+      }
+      await refreshInbounds();
+      return;
+    }
+    if (btn.dataset.act === "edit") {
+      try {
+        const r = await api("/api/inbounds/" + id);
+        fillInboundForm(r.inbound || r);
+      } catch (err) {
+        alert(err.message);
+      }
+    }
   };
 }
-$("#btn-add-in").onclick = async () => {
-  const cert_id = Number($("#in-cert").value) || 0;
+
+$("#btn-in-new") && ($("#btn-in-new").onclick = () => {
+  resetInboundForm();
+  $("#in-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+$("#btn-in-reset") && ($("#btn-in-reset").onclick = () => resetInboundForm());
+$("#btn-in-fill-json") && ($("#btn-in-fill-json").onclick = () => {
+  // preview: build local stream/settings sketch from form (server does real compose)
+  const proto = $("#in-proto").value;
+  const net = $("#in-network").value;
+  const sec = $("#in-security").value;
+  const settings = { decryption: proto === "vless" ? "none" : undefined };
+  if (proto === "vless" || proto === "vmess") {
+    settings.clients = [{ id: $("#in-uuid").value || "(auto)", email: "default@xpanel", flow: $("#in-flow").value || "" }];
+    if (proto !== "vless") delete settings.decryption;
+  } else if (proto === "trojan") {
+    settings.clients = [{ password: $("#in-password").value || "(auto)", email: "trojan@xpanel" }];
+  } else {
+    settings.method = $("#in-method").value;
+    settings.password = $("#in-password").value || "(auto)";
+    settings.network = "tcp,udp";
+  }
+  const stream = { network: net, security: sec };
+  if (net === "ws") stream.wsSettings = { path: $("#in-path").value || "/", headers: $("#in-host").value ? { Host: $("#in-host").value } : undefined };
+  if (net === "grpc") stream.grpcSettings = { serviceName: $("#in-path").value || "GunService" };
+  if (sec === "tls") stream.tlsSettings = { serverName: $("#in-sni").value || "" };
+  if (sec === "reality") {
+    stream.realitySettings = {
+      dest: $("#in-dest").value || "www.microsoft.com:443",
+      serverNames: [$("#in-sni").value || "www.microsoft.com"],
+      privateKey: $("#in-priv").value || "(auto)",
+      shortIds: [$("#in-sid").value || "(auto)", ""],
+      fingerprint: $("#in-fp").value || "chrome",
+    };
+  }
+  $("#in-settings-json").value = JSON.stringify(settings, null, 2);
+  $("#in-stream-json").value = JSON.stringify(stream, null, 2);
+});
+
+$("#btn-in-save") && ($("#btn-in-save").onclick = async () => {
   try {
-    const r = await api("/api/inbounds", {
-      method: "POST",
-      body: JSON.stringify({
-        server_id: $("#in-server").value,
-        protocol: $("#in-proto").value,
-        port: Number($("#in-port").value),
-        tag: $("#in-tag").value.trim() || undefined,
-        cert_id, enable_tls: cert_id > 0,
-      }),
-    });
-    let msg = "已创建入站 #" + r.id;
+    const id = ($("#in-id").value || "").trim();
+    const payload = collectInboundPayload();
+    if (!payload.server_id) return alert("请选择服务器");
+    if (!payload.port) return alert("端口无效");
+    let r;
+    if (id) {
+      r = await api("/api/inbounds/" + id, { method: "PUT", body: JSON.stringify(payload) });
+    } else {
+      r = await api("/api/inbounds", { method: "POST", body: JSON.stringify(payload) });
+    }
+    let msg = (id ? "已更新节点 #" : "已创建节点 #") + (r.id || id);
     if (r.share_link) msg += "\n\n分享链接:\n" + r.share_link;
     if (r.settings?.password) msg += "\n\nSS 密码: " + r.settings.password;
     if (r.settings?.clients?.[0]?.password) msg += "\n\nTrojan 密码: " + r.settings.clients[0].password;
     if (r.settings?.clients?.[0]?.id) msg += "\n\nUUID: " + r.settings.clients[0].id;
+    if (r.stream?.realitySettings?.privateKey) {
+      const meta = r.settings?.xpanelMeta;
+      if (meta?.publicKey) msg += "\n\nReality publicKey:\n" + meta.publicKey;
+    }
     alert(msg);
+    resetInboundForm();
+    await refreshInbounds();
   } catch (e) {
     alert(e.message);
   }
-  await refreshInbounds();
-};
+});
+
 $("#btn-reality").onclick = async () => {
   const server_id = $("#in-server").value;
   if (!server_id) return alert("先选服务器");
   const r = await api("/api/inbounds/quick-reality", {
     method: "POST",
-    body: JSON.stringify({ server_id, port: Number($("#in-port").value) || 443 }),
+    body: JSON.stringify({
+      server_id,
+      port: Number($("#in-port").value) || 443,
+      dest: $("#in-dest").value.trim() || undefined,
+      sni: $("#in-sni").value.trim() || undefined,
+      flow: $("#in-flow").value.trim() || undefined,
+      name: $("#in-tag").value.trim() || undefined,
+    }),
   });
   alert("Reality 已创建\nPublicKey:\n" + r.public_key + "\n\n分享链接:\n" + r.share_link);
   await refreshInbounds();

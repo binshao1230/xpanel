@@ -100,9 +100,11 @@ func (s *ServerApp) routes() {
 	s.mux.HandleFunc("DELETE /api/servers/{id}", s.adminOnly(s.handleDeleteServer))
 	s.mux.HandleFunc("POST /api/servers/{id}/bump-config", s.adminOnly(s.handleBumpConfig))
 
-	// inbounds / quick reality / links
+	// inbounds / free config / quick reality / links
 	s.mux.HandleFunc("GET /api/inbounds", s.authMiddleware(s.handleListInbounds))
+	s.mux.HandleFunc("GET /api/inbounds/{id}", s.authMiddleware(s.handleGetInbound))
 	s.mux.HandleFunc("POST /api/inbounds", s.adminOnly(s.handleCreateInbound))
+	s.mux.HandleFunc("PUT /api/inbounds/{id}", s.adminOnly(s.handleUpdateInbound))
 	s.mux.HandleFunc("DELETE /api/inbounds/{id}", s.adminOnly(s.handleDeleteInbound))
 	s.mux.HandleFunc("POST /api/inbounds/quick-reality", s.adminOnly(s.handleQuickRealityV5))
 	s.mux.HandleFunc("GET /api/inbounds/links", s.authMiddleware(s.handleInboundLinks))
@@ -442,10 +444,13 @@ func (s *ServerApp) handleListInbounds(w http.ResponseWriter, r *http.Request) {
 	serverID := r.URL.Query().Get("server_id")
 	var rows *sql.Rows
 	var err error
+	q := `SELECT id,server_id,tag,protocol,port,settings_json,stream_json,
+		COALESCE(multiplier,1),COALESCE(remark,''),COALESCE(cert_id,0),enabled,created_at,COALESCE(share_name,'')
+		FROM inbounds`
 	if serverID != "" {
-		rows, err = s.db.Query(`SELECT id,server_id,tag,protocol,port,settings_json,stream_json,COALESCE(multiplier,1),COALESCE(remark,''),COALESCE(cert_id,0),enabled,created_at FROM inbounds WHERE server_id=? ORDER BY id`, serverID)
+		rows, err = s.db.Query(q+` WHERE server_id=? ORDER BY id`, serverID)
 	} else {
-		rows, err = s.db.Query(`SELECT id,server_id,tag,protocol,port,settings_json,stream_json,COALESCE(multiplier,1),COALESCE(remark,''),COALESCE(cert_id,0),enabled,created_at FROM inbounds ORDER BY id`)
+		rows, err = s.db.Query(q + ` ORDER BY id`)
 	}
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
@@ -456,7 +461,7 @@ func (s *ServerApp) handleListInbounds(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var in Inbound
 		var en int
-		if err := rows.Scan(&in.ID, &in.ServerID, &in.Tag, &in.Protocol, &in.Port, &in.SettingsJSON, &in.StreamJSON, &in.Multiplier, &in.Remark, &in.CertID, &en, &in.CreatedAt); err != nil {
+		if err := rows.Scan(&in.ID, &in.ServerID, &in.Tag, &in.Protocol, &in.Port, &in.SettingsJSON, &in.StreamJSON, &in.Multiplier, &in.Remark, &in.CertID, &en, &in.CreatedAt, &in.ShareName); err != nil {
 			continue
 		}
 		in.Enabled = en == 1
@@ -466,19 +471,9 @@ func (s *ServerApp) handleListInbounds(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ServerApp) handleCreateInbound(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ServerID string         `json:"server_id"`
-		Tag      string         `json:"tag"`
-		Protocol string         `json:"protocol"`
-		Port     int            `json:"port"`
-		Settings map[string]any `json:"settings"`
-		Stream   map[string]any `json:"stream"`
-		ClientID string         `json:"client_id"`
-		CertID   int64          `json:"cert_id"`
-		EnableTLS bool          `json:"enable_tls"`
-	}
-	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, 400, map[string]string{"error": "bad json"})
+	body, err := parseInboundForm(r)
+	if err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
 	if body.ServerID == "" || body.Protocol == "" || body.Port <= 0 {
@@ -488,65 +483,32 @@ func (s *ServerApp) handleCreateInbound(w http.ResponseWriter, r *http.Request) 
 	if body.Tag == "" {
 		body.Tag = fmt.Sprintf("%s-%d", body.Protocol, body.Port)
 	}
-	if body.Settings == nil {
-		body.Settings = map[string]any{}
+	shareName := body.ShareName
+	if shareName == "" {
+		shareName = body.Tag
 	}
-	// fill usable defaults so UI one-click create always works
-	switch body.Protocol {
-	case "vless", "vmess":
-		cid := body.ClientID
-		if cid == "" {
-			cid = uuid.NewString()
-		}
-		if _, ok := body.Settings["clients"]; !ok {
-			body.Settings["clients"] = []map[string]any{
-				xraycfg.DefaultVLESSClient(cid, "default@xpanel"),
-			}
-			if body.Protocol == "vless" {
-				body.Settings["decryption"] = "none"
-			}
-		}
-	case "trojan":
-		if _, ok := body.Settings["clients"]; !ok {
-			pw := randomHex(8)
-			body.Settings["clients"] = []map[string]any{
-				{"password": pw, "email": "trojan@xpanel"},
-			}
-		}
-	case "shadowsocks", "ss":
-		if _, ok := body.Settings["method"]; !ok {
-			body.Settings["method"] = "aes-256-gcm"
-		}
-		if pw, _ := body.Settings["password"].(string); pw == "" {
-			body.Settings["password"] = randomHex(8)
-		}
-		if _, ok := body.Settings["network"]; !ok {
-			body.Settings["network"] = "tcp,udp"
-		}
+	mult := 1.0
+	if body.Multiplier != nil && *body.Multiplier > 0 {
+		mult = *body.Multiplier
 	}
-	if body.Stream == nil {
-		body.Stream = map[string]any{"network": "tcp"}
+	en := 1
+	if body.Enabled != nil && !*body.Enabled {
+		en = 0
 	}
-	// bind TLS cert if requested — require real-looking PEM
-	if body.CertID > 0 || body.EnableTLS {
-		var domain, certPEM string
-		if body.CertID > 0 {
-			_ = s.db.QueryRow(
-				`SELECT domain, cert_pem FROM certificates WHERE id=? AND status='active' AND cert_pem!='' AND key_pem!=''`,
-				body.CertID,
-			).Scan(&domain, &certPEM)
-		}
-		if domain == "" || !strings.Contains(certPEM, "BEGIN CERTIFICATE") {
-			writeJSON(w, 400, map[string]string{"error": "请选择有效证书（需含完整 PEM）。可先在「证书 ACME」申请或上传真实证书。"})
-			return
-		}
-		body.Stream = xraycfg.ApplyTLSFiles(body.Stream, domain)
+
+	settings := s.composeInboundSettings(&body)
+	stream, err := s.composeInboundStream(&body)
+	if err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
 	}
-	sj, _ := json.Marshal(body.Settings)
-	st, _ := json.Marshal(body.Stream)
+	sj, _ := json.Marshal(settings)
+	st, _ := json.Marshal(stream)
 	res, err := s.db.Exec(
-		`INSERT INTO inbounds(server_id,tag,protocol,port,settings_json,stream_json,cert_id,enabled,created_at) VALUES(?,?,?,?,?,?,?,1,?)`,
-		body.ServerID, body.Tag, body.Protocol, body.Port, string(sj), string(st), body.CertID, nowUnix(),
+		`INSERT INTO inbounds(server_id,tag,protocol,port,settings_json,stream_json,multiplier,remark,cert_id,enabled,created_at,share_name)
+		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		body.ServerID, body.Tag, body.Protocol, body.Port, string(sj), string(st),
+		mult, body.Remark, body.CertID, en, nowUnix(), shareName,
 	)
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
@@ -554,7 +516,8 @@ func (s *ServerApp) handleCreateInbound(w http.ResponseWriter, r *http.Request) 
 	}
 	id, _ := res.LastInsertId()
 	s.bumpServer(body.ServerID)
-	// build share link for immediate UI feedback
+	s.audit("admin", "create_inbound", body.Tag)
+
 	var ip, domain string
 	_ = s.db.QueryRow(`SELECT public_ip, COALESCE(domain,'') FROM servers WHERE id=?`, body.ServerID).Scan(&ip, &domain)
 	addr := domain
@@ -564,10 +527,10 @@ func (s *ServerApp) handleCreateInbound(w http.ResponseWriter, r *http.Request) 
 	if addr == "" {
 		addr = "YOUR_IP"
 	}
-	link := buildShareLink(body.Protocol, body.Tag, addr, body.Port, string(sj), string(st))
+	link := buildShareLink(body.Protocol, shareName, addr, body.Port, string(sj), string(st))
 	writeJSON(w, 200, map[string]any{
 		"id": id, "tag": body.Tag, "cert_id": body.CertID,
-		"settings": body.Settings, "share_link": link,
+		"settings": settings, "stream": stream, "share_link": link,
 	})
 }
 

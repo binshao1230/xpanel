@@ -61,6 +61,7 @@ type Inbound struct {
 	StreamJSON   string  `json:"stream_json"`
 	Multiplier   float64 `json:"multiplier"`
 	Remark       string  `json:"remark"`
+	ShareName    string  `json:"share_name"`
 	CertID       int64   `json:"cert_id"`
 	Enabled      bool    `json:"enabled"`
 	CreatedAt    int64   `json:"created_at"`
