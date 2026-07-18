@@ -3,7 +3,7 @@ package master
 import (
 	"time"
 
-	"github.com/xpanel/xpanel/internal/protocol"
+	"github.com/binshao1230/bpanel/internal/protocol"
 )
 
 // applyHeartbeat updates DB from agent heartbeat (HTTP or WS).

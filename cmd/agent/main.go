@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/xpanel/xpanel/internal/agent"
-	"github.com/xpanel/xpanel/internal/version"
-	"github.com/xpanel/xpanel/internal/xrayproc"
+	"github.com/binshao1230/bpanel/internal/agent"
+	"github.com/binshao1230/bpanel/internal/version"
+	"github.com/binshao1230/bpanel/internal/xrayproc"
 )
 
 func main() {
@@ -66,7 +66,7 @@ func main() {
 		a.Stop()
 	}()
 
-	log.Printf("xpanel agent %s → master %s", version.Version, *masterURL)
+	log.Printf("bpanel agent %s → master %s", version.Version, *masterURL)
 	if err := a.Run(); err != nil {
 		b, _ := json.Marshal(map[string]string{"error": err.Error()})
 		log.Fatal(string(b))

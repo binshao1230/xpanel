@@ -1,4 +1,4 @@
-module github.com/xpanel/xpanel
+module github.com/binshao1230/bpanel
 
 go 1.22.0
 

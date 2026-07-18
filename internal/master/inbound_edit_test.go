@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	xpcrypto "github.com/xpanel/xpanel/internal/crypto"
+	xpcrypto "github.com/binshao1230/bpanel/internal/crypto"
 )
 
 func TestComposeRealityDoesNotMismatchKeys(t *testing.T) {
@@ -34,7 +34,7 @@ func TestComposeRealityDoesNotMismatchKeys(t *testing.T) {
 	if rs["privateKey"] != priv {
 		t.Fatalf("private key changed")
 	}
-	meta := body.Settings["xpanelMeta"].(map[string]any)
+	meta := body.Settings["bpanelMeta"].(map[string]any)
 	if meta["publicKey"] != pub {
 		t.Fatalf("public key mismatch: got %v want %s", meta["publicKey"], pub)
 	}
@@ -57,11 +57,11 @@ func TestFillProtocolDefaultsKeepsExistingClients(t *testing.T) {
 }
 
 func TestJSONRoundTripSettings(t *testing.T) {
-	// ensure xpanelMeta survives marshal for share links
+	// ensure bpanelMeta survives marshal for share links
 	settings := map[string]any{
 		"clients":    []any{map[string]any{"id": "u1"}},
 		"decryption": "none",
-		"xpanelMeta": map[string]any{"publicKey": "pk", "shortId": "abcd"},
+		"bpanelMeta": map[string]any{"publicKey": "pk", "shortId": "abcd"},
 	}
 	raw, err := json.Marshal(settings)
 	if err != nil {
@@ -71,7 +71,7 @@ func TestJSONRoundTripSettings(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatal(err)
 	}
-	meta := back["xpanelMeta"].(map[string]any)
+	meta := back["bpanelMeta"].(map[string]any)
 	if meta["publicKey"] != "pk" {
 		t.Fatal("meta lost")
 	}

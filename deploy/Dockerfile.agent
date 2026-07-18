@@ -5,7 +5,7 @@ RUN apk add --no-cache git ca-certificates
 COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/xpanel-agent ./cmd/agent
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/bpanel-agent ./cmd/agent
 
 # Fetch official Xray-core (linux amd64)
 FROM alpine:3.20 AS xray
@@ -21,13 +21,13 @@ RUN apk add --no-cache curl unzip ca-certificates \
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
-COPY --from=build /out/xpanel-agent /app/xpanel-agent
+COPY --from=build /out/bpanel-agent /app/bpanel-agent
 COPY --from=xray /out-xray /usr/local/bin/xray
 RUN mkdir -p /data
-ENV MASTER_URL=http://xpanel-master:8080 \
+ENV MASTER_URL=http://bpanel-master:8080 \
     INSTALL_TOKEN= \
     DATA_DIR=/data \
     XRAY_CONFIG=/data/xray.json \
     XRAY_BIN=/usr/local/bin/xray
 VOLUME ["/data"]
-ENTRYPOINT ["/app/xpanel-agent"]
+ENTRYPOINT ["/app/bpanel-agent"]

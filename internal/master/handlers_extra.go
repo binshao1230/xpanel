@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/xpanel/xpanel/internal/sub"
+	"github.com/binshao1230/bpanel/internal/sub"
 )
 
 func (s *ServerApp) adminOnly(next http.HandlerFunc) http.HandlerFunc {
@@ -613,7 +613,7 @@ func (s *ServerApp) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	// defaults — softer auto theme by default
 	if _, ok := m["site_name"]; !ok {
-		m["site_name"] = "XPanel"
+		m["site_name"] = "BPanel"
 	}
 	if _, ok := m["theme"]; !ok {
 		m["theme"] = "auto"
@@ -661,7 +661,7 @@ func (s *ServerApp) handleQuickReality(w http.ResponseWriter, r *http.Request) {
 	shortID := randomHex(4)
 	clientID := uuid.NewString()
 	settings := map[string]any{
-		"clients":    []map[string]any{{"id": clientID, "email": "reality@xpanel", "flow": "xtls-rprx-vision"}},
+		"clients":    []map[string]any{{"id": clientID, "email": "reality@bpanel", "flow": "xtls-rprx-vision"}},
 		"decryption": "none",
 	}
 	stream := map[string]any{

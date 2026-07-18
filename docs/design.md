@@ -1,4 +1,4 @@
-# XPanel 系统设计文档
+# BPanel 系统设计文档
 
 > 多服务器 Xray 管理面板：主控（Master）+ 子节点（Agent）架构。  
 > 对标公开产品形态（如 x-ui / 妙妙屋X 类面板），**独立实现**，不依赖其授权逻辑。
@@ -134,7 +134,7 @@ Response: `ConfigBundle`
 ## 6. 目录结构
 
 ```
-xpanel/
+bpanel/
   cmd/master/main.go
   cmd/agent/main.go
   internal/
@@ -153,8 +153,8 @@ xpanel/
 
 ## 7. Docker 部署
 
-- `xpanel-master`：端口 8080，卷挂载 `./data`  
-- `xpanel-agent`：依赖主控地址 + install token 环境变量  
+- `bpanel-master`：端口 8080，卷挂载 `./data`  
+- `bpanel-agent`：依赖主控地址 + install token 环境变量  
 - 生产建议：Master 用反向代理 TLS；Agent 与 Xray 可用 host 网络以便暴露业务端口  
 
 ## 8. 安全

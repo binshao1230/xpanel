@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xpanel/xpanel/internal/protocol"
+	"github.com/binshao1230/bpanel/internal/protocol"
 )
 
 // queryXrayStats uses `xray api statsquery` when available.

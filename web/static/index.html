@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#fffaf7" />
-  <title>XPanel · 多机 Xray 面板</title>
+  <title>BPanel · 多机 Xray 面板</title>
   <link rel="stylesheet" href="/static/style.css" />
   <script>
     /* 防闪：与妙妙屋一致 light / dark / system */
     (function () {
-      var t = localStorage.getItem("xpanel_theme_mode") || "system";
+      var t = localStorage.getItem("bpanel_theme_mode") || "system";
       if (t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches)) {
         document.documentElement.classList.add("dark");
       }
@@ -20,7 +20,7 @@
   <div id="app">
     <section id="view-auth" class="auth-wrap hidden">
       <div class="auth-card">
-        <h1>XPanel</h1>
+        <h1>BPanel</h1>
         <p class="muted" id="auth-hint">多服务器 Xray 管理 · 订阅拼车</p>
         <div class="tabs-mini" id="auth-tabs">
           <button type="button" class="active" data-mode="login">登录</button>
@@ -38,8 +38,8 @@
       <div class="side-mask" id="side-mask"></div>
       <aside class="side" id="side">
         <div class="brand">
-          <span class="brand-mark">XP</span>
-          <span class="brand-text">XPanel <span id="ver"></span></span>
+          <span class="brand-mark">BP</span>
+          <span class="brand-text">BPanel <span id="ver"></span></span>
         </div>
         <nav id="nav">
           <div class="nav-group">总览</div>

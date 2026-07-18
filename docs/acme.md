@@ -1,12 +1,12 @@
 # ACME 证书（Let's Encrypt）
 
-XPanel 使用 [lego](https://github.com/go-acme/lego) 申请/续期证书。
+BPanel 使用 [lego](https://github.com/go-acme/lego) 申请/续期证书。
 
 ## 方式一：HTTP-01
 
 1. 域名 **A/AAAA** 解析到主控公网 IP  
 2. **80 端口** 能访问到面板（或 Nginx 反代）  
-3. 将 `/.well-known/acme-challenge/` 转到 XPanel（同机 host 网络可直接监听 80 再跳转）  
+3. 将 `/.well-known/acme-challenge/` 转到 BPanel（同机 host 网络可直接监听 80 再跳转）  
 4. 面板 → 证书 → 挑战选 `http-01` → 填写域名与邮箱 → 申请  
 
 示例 Nginx：

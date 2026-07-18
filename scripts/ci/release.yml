@@ -41,8 +41,8 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           EXT="${{ matrix.ext }}"
-          go build -trimpath -ldflags="-s -w" -o "dist/xpanel-master-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}" ./cmd/master
-          go build -trimpath -ldflags="-s -w" -o "dist/xpanel-agent-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}" ./cmd/agent
+          go build -trimpath -ldflags="-s -w" -o "dist/bpanel-master-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}" ./cmd/master
+          go build -trimpath -ldflags="-s -w" -o "dist/bpanel-agent-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}" ./cmd/agent
 
       - uses: actions/upload-artifact@v4
         with:

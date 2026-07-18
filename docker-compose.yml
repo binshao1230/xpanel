@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.master
-    image: xpanel-master:local
-    container_name: xpanel-master
+    image: bpanel-master:local
+    container_name: bpanel-master
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -22,8 +22,8 @@ services:
   #   build:
   #     context: .
   #     dockerfile: deploy/Dockerfile.agent
-  #   image: xpanel-agent:local
-  #   container_name: xpanel-agent
+  #   image: bpanel-agent:local
+  #   container_name: bpanel-agent
   #   restart: unless-stopped
   #   network_mode: host
   #   environment:
@@ -39,8 +39,8 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.agent
-    image: xpanel-agent:local
-    container_name: xpanel-agent-demo
+    image: bpanel-agent:local
+    container_name: bpanel-agent-demo
     restart: unless-stopped
     profiles: ["agent"]
     depends_on:

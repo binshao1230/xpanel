@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# XPanel Master 一键安装 / 更新 / 卸载（Linux）
+# BPanel Master 一键安装 / 更新 / 卸载（Linux）
 # 用法:
 #   curl -sL https://raw.githubusercontent.com/binshao1230/xpanel/main/install.sh | sudo bash
 #   curl -sL .../install.sh | sudo bash -s -- update
 #   curl -sL .../install.sh | sudo bash -s -- uninstall
 set -euo pipefail
 
-REPO="${XPANEL_REPO:-binshao1230/xpanel}"
-APP_NAME="xpanel-master"
-INSTALL_DIR="${XPANEL_DIR:-/opt/xpanel}"
+# 默认指向当前 GitHub 仓库；若已将仓库改名为 bpanel，可设 BPANEL_REPO=binshao1230/bpanel
+REPO="${BPANEL_REPO:-binshao1230/xpanel}"
+APP_NAME="bpanel-master"
+INSTALL_DIR="${BPANEL_DIR:-/opt/bpanel}"
 BIN_PATH="${INSTALL_DIR}/bin/${APP_NAME}"
 DATA_DIR="${INSTALL_DIR}/data"
-SERVICE_NAME="xpanel-master"
+SERVICE_NAME="bpanel-master"
 DEFAULT_PORT="${PORT:-8080}"
 GITHUB_API="https://api.github.com/repos/${REPO}"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
@@ -19,7 +20,7 @@ RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
 red() { echo -e "\033[31m$*\033[0m"; }
 green() { echo -e "\033[32m$*\033[0m"; }
 yellow() { echo -e "\033[33m$*\033[0m"; }
-info() { echo -e "\033[36m[xpanel]\033[0m $*"; }
+info() { echo -e "\033[36m[bpanel]\033[0m $*"; }
 
 need_root() {
   if [[ "$(id -u)" -ne 0 ]]; then
@@ -75,7 +76,7 @@ latest_tag() {
 
 asset_url() {
   local tag="$1" os="$2" arch="$3"
-  # prefer versioned name: xpanel-master-linux-amd64
+  # prefer versioned name: bpanel-master-linux-amd64
   local name="${APP_NAME}-${os}-${arch}"
   if [[ "$tag" == "latest" ]]; then
     echo "https://github.com/${REPO}/releases/latest/download/${name}"
@@ -139,7 +140,7 @@ write_service() {
 
   cat >"/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
 [Unit]
-Description=XPanel Master - multi-server Xray control panel
+Description=BPanel Master - multi-server Xray control panel
 After=network-online.target
 Wants=network-online.target
 

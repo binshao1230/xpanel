@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	xpcrypto "github.com/xpanel/xpanel/internal/crypto"
-	"github.com/xpanel/xpanel/internal/xraycfg"
+	xpcrypto "github.com/binshao1230/bpanel/internal/crypto"
+	"github.com/binshao1230/bpanel/internal/xraycfg"
 )
 
 // inboundForm is the free-form create/update body for nodes (inbounds).
@@ -101,7 +101,7 @@ func (s *ServerApp) fillProtocolDefaults(body *inboundForm) {
 			flow = "xtls-rprx-vision"
 		}
 		if _, ok := body.Settings["clients"]; !ok {
-			c := map[string]any{"id": cid, "email": "default@xpanel"}
+			c := map[string]any{"id": cid, "email": "default@bpanel"}
 			if flow != "" {
 				c["flow"] = flow
 			} else if proto == "vless" {
@@ -121,7 +121,7 @@ func (s *ServerApp) fillProtocolDefaults(body *inboundForm) {
 				pw = randomHex(8)
 			}
 			body.Settings["clients"] = []map[string]any{
-				{"password": pw, "email": "trojan@xpanel"},
+				{"password": pw, "email": "trojan@bpanel"},
 			}
 		}
 	case "shadowsocks", "ss":
@@ -310,13 +310,17 @@ func (s *ServerApp) composeInboundStream(body *inboundForm) (map[string]any, err
 		if body.Settings == nil {
 			body.Settings = map[string]any{}
 		}
-		meta, _ := body.Settings["xpanelMeta"].(map[string]any)
+		meta, _ := body.Settings["bpanelMeta"].(map[string]any)
+		if meta == nil {
+			meta, _ = body.Settings["xpanelMeta"].(map[string]any)
+		}
 		if meta == nil {
 			meta = map[string]any{}
 		}
 		meta["publicKey"] = pub
 		meta["shortId"] = shortID
-		body.Settings["xpanelMeta"] = meta
+		body.Settings["bpanelMeta"] = meta
+		delete(body.Settings, "xpanelMeta")
 
 	case "none", "":
 		stream["security"] = "none"
@@ -447,7 +451,11 @@ FROM inbounds WHERE id=?`, id).Scan(
 			}
 		}
 		if curSettings := map[string]any{}; json.Unmarshal([]byte(curSJ), &curSettings) == nil {
-			if meta, ok := curSettings["xpanelMeta"].(map[string]any); ok {
+			meta, _ := curSettings["bpanelMeta"].(map[string]any)
+			if meta == nil {
+				meta, _ = curSettings["xpanelMeta"].(map[string]any)
+			}
+			if meta != nil {
 				curPub, _ = meta["publicKey"].(string)
 				if curSid == "" {
 					curSid, _ = meta["shortId"].(string)

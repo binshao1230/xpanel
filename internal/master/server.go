@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/xpanel/xpanel/internal/acme"
-	"github.com/xpanel/xpanel/internal/protocol"
-	"github.com/xpanel/xpanel/internal/sub"
-	"github.com/xpanel/xpanel/internal/version"
-	"github.com/xpanel/xpanel/internal/xraycfg"
+	"github.com/binshao1230/bpanel/internal/acme"
+	"github.com/binshao1230/bpanel/internal/protocol"
+	"github.com/binshao1230/bpanel/internal/sub"
+	"github.com/binshao1230/bpanel/internal/version"
+	"github.com/binshao1230/bpanel/internal/xraycfg"
 )
 
 type Config struct {
@@ -51,7 +51,7 @@ func New(cfg Config) (*ServerApp, error) {
 		cfg.JWTSecret = randomHex(32)
 		log.Printf("generated ephemeral JWT secret; set JWT_SECRET for stability")
 	}
-	dbPath := strings.TrimRight(cfg.DataDir, `/\`) + "/xpanel.db"
+	dbPath := resolveDBPath(cfg.DataDir)
 	db, err := openDB(dbPath)
 	if err != nil {
 		return nil, err
@@ -399,16 +399,16 @@ func (s *ServerApp) handleInstallCmd(w http.ResponseWriter, r *http.Request) {
 		base = fmt.Sprintf("%s://%s", scheme, r.Host)
 	}
 	cmd := fmt.Sprintf(
-		`docker run -d --name xpanel-agent --restart unless-stopped --network host `+
+		`docker run -d --name bpanel-agent --restart unless-stopped --network host `+
 			`-e MASTER_URL=%q -e INSTALL_TOKEN=%q -e XRAY_CONFIG=/data/xray.json `+
-			`-v xpanel-agent-data:/data ghcr.io/binshao1230/xpanel-agent:latest`,
+			`-v bpanel-agent-data:/data ghcr.io/binshao1230/xpanel-agent:latest`,
 		base, token,
 	)
 	oneClick := fmt.Sprintf(
 		`curl -sL https://raw.githubusercontent.com/binshao1230/xpanel/main/install-agent.sh | sudo bash -s -- -m %s -t %s --with-xray`,
 		base, token,
 	)
-	bin := fmt.Sprintf(`./xpanel-agent -master %s -token %s -data ./agent-data -mode auto`, base, token)
+	bin := fmt.Sprintf(`./bpanel-agent -master %s -token %s -data ./agent-data -mode auto`, base, token)
 	writeJSON(w, 200, map[string]any{
 		"server_id":    id,
 		"name":         name,
@@ -677,7 +677,8 @@ func (s *ServerApp) buildConfigBundle(serverID string) (*protocol.ConfigBundle, 
 		_ = json.Unmarshal([]byte(sj), &settings)
 		_ = json.Unmarshal([]byte(st), &stream)
 		if settings != nil {
-			delete(settings, "xpanelMeta") // not for xray core
+			delete(settings, "bpanelMeta") // not for xray core
+			delete(settings, "xpanelMeta") // legacy
 		}
 		if certID > 0 {
 			if domain, ok := certDomainByID[certID]; ok {

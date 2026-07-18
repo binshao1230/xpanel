@@ -1,14 +1,15 @@
-# XPanel
+# BPanel
 
-多服务器 **Xray 主控面板**（Master + Agent），独立实现，支持 Docker / 一键脚本 / WebSocket。
+多服务器 **Xray 主控面板**（Master + Agent），独立实现，支持 Docker / 一键脚本 / WebSocket。  
+（原名 XPanel，产品与二进制已统一为 **BPanel**）
 
 - 设计：[docs/design.md](docs/design.md)
 - 功能对照：[docs/feature-parity.md](docs/feature-parity.md)
 - ACME：[docs/acme.md](docs/acme.md)
 
-## 功能（v0.5 · 对标妙妙屋X 风格）
+## 功能（v0.6 · 对标妙妙屋X 风格）
 
-- **界面**：暗色 / 亮色 / 二次元 / 扁平主题；服务器卡片；流量趋势图；续费进度条
+- **界面**：妙妙屋 terracotta 像素主题 · light/dark/system；侧滑节点编辑；Toast / 模板创建
 - **主控 Web**：仪表盘 · 服务器 · 入站 · 出站/路由 · 中转隧道 · 套餐 · 用户/续费 · 邀请码 · 外部节点 · 证书 · Nginx · 流量 · 测速 · URI 分享 · 订阅 · 设置
 - **Agent**：auto / WebSocket / HTTP / Pull；Xray 进程托管；证书下发；实时网速
 - **入站**：VLESS Reality（真实 x25519）· TLS · 多协议；URI 一键复制
@@ -45,7 +46,8 @@ curl -sL https://raw.githubusercontent.com/binshao1230/xpanel/main/install.sh | 
 | `PORT` | 监听端口 | `8080` |
 | `PUBLIC_URL` | 对外访问地址（订阅/安装命令） | 自动探测 |
 | `JWT_SECRET` | 会话密钥 | 随机生成 |
-| `XPANEL_DIR` | 安装目录 | `/opt/xpanel` |
+| `BPANEL_DIR` | 安装目录 | `/opt/bpanel` |
+| `BPANEL_REPO` | GitHub 仓库 `owner/name` | `binshao1230/xpanel` |
 
 ### Agent（在节点机上）
 

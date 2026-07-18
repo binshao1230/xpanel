@@ -1,7 +1,21 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
+// 迁移旧版 XPanel localStorage 键
+(function migrateLegacyKeys() {
+  const pairs = [
+    ["xpanel_token", "bpanel_token"],
+    ["xpanel_theme_mode", "bpanel_theme_mode"],
+    ["xpanel_theme", "bpanel_theme"],
+  ];
+  for (const [oldK, newK] of pairs) {
+    if (!localStorage.getItem(newK) && localStorage.getItem(oldK)) {
+      localStorage.setItem(newK, localStorage.getItem(oldK));
+    }
+  }
+})();
+
 const state = {
-  token: localStorage.getItem("xpanel_token") || "",
+  token: localStorage.getItem("bpanel_token") || localStorage.getItem("xpanel_token") || "",
   meta: null,
   servers: [],
   plans: [],
@@ -173,7 +187,7 @@ function setTheme(mode, opts = {}) {
     modeKey = "system";
   }
   if (!THEME_MODES.includes(modeKey)) modeKey = "system";
-  localStorage.setItem("xpanel_theme_mode", modeKey);
+  localStorage.setItem("bpanel_theme_mode", modeKey);
 
   const applied = resolveTheme(modeKey);
   document.documentElement.classList.toggle("dark", applied === "dark");
@@ -206,7 +220,7 @@ function setTheme(mode, opts = {}) {
 }
 
 function cycleTheme() {
-  const cur = localStorage.getItem("xpanel_theme_mode") || "system";
+  const cur = localStorage.getItem("bpanel_theme_mode") || "system";
   // 与妙妙屋 ThemeSwitch 一致：light → dark → system → light
   let next = "light";
   if (cur === "light") next = "dark";
@@ -219,7 +233,7 @@ function watchSystemTheme() {
   if (watchSystemTheme._mq) return;
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
   const onChange = () => {
-    const mode = localStorage.getItem("xpanel_theme_mode") || "system";
+    const mode = localStorage.getItem("bpanel_theme_mode") || "system";
     if (mode === "system") setTheme("system", { quiet: true });
   };
   if (mq.addEventListener) mq.addEventListener("change", onChange);
@@ -229,12 +243,12 @@ function watchSystemTheme() {
 
 async function boot() {
   // 兼容旧 key
-  let mode = localStorage.getItem("xpanel_theme_mode");
+  let mode = localStorage.getItem("bpanel_theme_mode");
   if (!mode) {
-    const legacy = localStorage.getItem("xpanel_theme");
+    const legacy = localStorage.getItem("bpanel_theme");
     if (legacy === "light" || legacy === "dark") mode = legacy;
     else mode = "system";
-    localStorage.setItem("xpanel_theme_mode", mode);
+    localStorage.setItem("bpanel_theme_mode", mode);
   }
   setTheme(mode, { quiet: true });
   watchSystemTheme();
@@ -255,7 +269,7 @@ async function boot() {
     return;
   }
   try { await enterMain(); }
-  catch { state.token = ""; localStorage.removeItem("xpanel_token"); showAuth(); }
+  catch { state.token = ""; localStorage.removeItem("bpanel_token"); showAuth(); }
 }
 
 function showAuth() {
@@ -335,7 +349,7 @@ $("#auth-btn").onclick = async () => {
       });
       state.token = data.token;
     }
-    localStorage.setItem("xpanel_token", state.token);
+    localStorage.setItem("bpanel_token", state.token);
     await enterMain();
   } catch (e) {
     $("#auth-err").textContent = e.message;
@@ -345,7 +359,7 @@ $("#auth-btn").onclick = async () => {
 $$("#nav .nav").forEach((btn) => { btn.onclick = () => switchTab(btn.dataset.tab); });
 const themeCycleBtn = $("#theme-cycle");
 if (themeCycleBtn) themeCycleBtn.onclick = () => cycleTheme();
-$("#btn-logout").onclick = () => { localStorage.removeItem("xpanel_token"); location.reload(); };
+$("#btn-logout").onclick = () => { localStorage.removeItem("bpanel_token"); location.reload(); };
 $("#modal-close") && ($("#modal-close").onclick = () => $("#modal").classList.add("hidden"));
 $("#modal-close-2") && ($("#modal-close-2").onclick = () => $("#modal").classList.add("hidden"));
 $("#modal-copy") && ($("#modal-copy").onclick = () => copyText($("#install-cmd")?.textContent || "").catch(() => {}));
@@ -739,7 +753,8 @@ function parseSettingsForm(settings) {
   }
   if (st.password) password = st.password;
   if (st.method) method = st.method;
-  return { uuid, flow, password, method, pbk: (st.xpanelMeta && st.xpanelMeta.publicKey) || "" };
+  const meta = st.bpanelMeta || st.xpanelMeta || {};
+  return { uuid, flow, password, method, pbk: meta.publicKey || "" };
 }
 
 function setFoldsOpen(open) {
@@ -1183,10 +1198,10 @@ $("#btn-in-fill-json") && ($("#btn-in-fill-json").onclick = () => {
   const p = collectInboundPayload();
   const settings = { decryption: p.protocol === "vless" ? "none" : undefined };
   if (p.protocol === "vless" || p.protocol === "vmess") {
-    settings.clients = [{ id: p.uuid || "(auto)", email: "default@xpanel", flow: p.flow || "" }];
+    settings.clients = [{ id: p.uuid || "(auto)", email: "default@bpanel", flow: p.flow || "" }];
     if (p.protocol !== "vless") delete settings.decryption;
   } else if (p.protocol === "trojan") {
-    settings.clients = [{ password: p.password || "(auto)", email: "trojan@xpanel" }];
+    settings.clients = [{ password: p.password || "(auto)", email: "trojan@bpanel" }];
   } else {
     settings.method = p.method;
     settings.password = p.password || "(auto)";
@@ -1229,7 +1244,8 @@ $("#btn-in-save") && ($("#btn-in-save").onclick = async () => {
     if (r.settings?.password) msg += "\n\nSS 密码: " + r.settings.password;
     if (r.settings?.clients?.[0]?.password) msg += "\n\nTrojan 密码: " + r.settings.clients[0].password;
     if (r.settings?.clients?.[0]?.id) msg += "\n\nUUID: " + r.settings.clients[0].id;
-    if (r.settings?.xpanelMeta?.publicKey) msg += "\n\nReality publicKey:\n" + r.settings.xpanelMeta.publicKey;
+    const pk = r.settings?.bpanelMeta?.publicKey || r.settings?.xpanelMeta?.publicKey;
+    if (pk) msg += "\n\nReality publicKey:\n" + pk;
     toast(id ? "节点已更新并下发" : "节点已创建并下发", "ok");
     showResult(id ? "更新成功" : "创建成功", msg);
     resetInboundForm();
@@ -1639,8 +1655,8 @@ $("#btn-refresh-links").onclick = () => refreshLinks();
 async function refreshSettings() {
   const data = await api("/api/settings");
   const s = data.settings || {};
-  $("#set-site").value = s.site_name || "XPanel";
-  let themeMode = localStorage.getItem("xpanel_theme_mode") || s.theme || "system";
+  $("#set-site").value = s.site_name || "BPanel";
+  let themeMode = localStorage.getItem("bpanel_theme_mode") || s.theme || "system";
   if (!THEME_MODES.includes(themeMode)) themeMode = "system";
   $("#set-theme").value = themeMode;
   $("#set-probe").value = s.probe_mode || "off";
@@ -1675,7 +1691,7 @@ $("#btn-backup").onclick = async () => {
   const blob = await res.blob();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "xpanel-backup.json";
+  a.download = "bpanel-backup.json";
   a.click();
 };
 

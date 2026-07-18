@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/xpanel/xpanel/internal/protocol"
+	"github.com/binshao1230/bpanel/internal/protocol"
 )
 
 func (a *Agent) runWebSocket() error {

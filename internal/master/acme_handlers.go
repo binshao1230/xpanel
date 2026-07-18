@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xpanel/xpanel/internal/acme"
+	"github.com/binshao1230/bpanel/internal/acme"
 )
 
 func (s *ServerApp) handleIssueACME(w http.ResponseWriter, r *http.Request) {

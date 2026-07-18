@@ -23,7 +23,7 @@ func (s *ServerApp) handleBackupExport(w http.ResponseWriter, r *http.Request) {
 		tm[t] = rows
 	}
 	// scrub agent keys? keep them for restore; strip password hashes is bad for restore
-	w.Header().Set("Content-Disposition", "attachment; filename=xpanel-backup.json")
+	w.Header().Set("Content-Disposition", "attachment; filename=bpanel-backup.json")
 	writeJSON(w, 200, out)
 }
 

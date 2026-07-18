@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xpanel/xpanel/internal/protocol"
-	"github.com/xpanel/xpanel/internal/version"
-	"github.com/xpanel/xpanel/internal/xrayproc"
+	"github.com/binshao1230/bpanel/internal/protocol"
+	"github.com/binshao1230/bpanel/internal/version"
+	"github.com/binshao1230/bpanel/internal/xrayproc"
 )
 
 type Config struct {

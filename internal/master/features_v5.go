@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	xpcrypto "github.com/xpanel/xpanel/internal/crypto"
-	"github.com/xpanel/xpanel/internal/version"
-	"github.com/xpanel/xpanel/internal/xraycfg"
+	xpcrypto "github.com/binshao1230/bpanel/internal/crypto"
+	"github.com/binshao1230/bpanel/internal/version"
+	"github.com/binshao1230/bpanel/internal/xraycfg"
 )
 
 func (s *ServerApp) audit(actor, action, detail string) {
@@ -54,10 +54,10 @@ func (s *ServerApp) handleQuickRealityV5(w http.ResponseWriter, r *http.Request)
 	shortID, _ := xpcrypto.RandomShortID()
 	clientID := uuid.NewString()
 	settings := map[string]any{
-		"clients":    []map[string]any{{"id": clientID, "email": "reality@xpanel", "flow": body.Flow}},
+		"clients":    []map[string]any{{"id": clientID, "email": "reality@bpanel", "flow": body.Flow}},
 		"decryption": "none",
-		// xpanel meta (stripped before agent deploy if needed; kept for share links)
-		"xpanelMeta": map[string]any{"publicKey": pub, "shortId": shortID},
+		// panel meta (stripped before agent deploy; kept for share links)
+		"bpanelMeta": map[string]any{"publicKey": pub, "shortId": shortID},
 	}
 	stream := map[string]any{
 		"network":  "tcp",
@@ -181,7 +181,13 @@ func buildShareLink(proto, name, addr string, port int, settingsJSON, streamJSON
 				sid, _ = shortIds[0].(string)
 			}
 		}
-		if meta, ok := settings["xpanelMeta"].(map[string]any); ok {
+		if meta, ok := settings["bpanelMeta"].(map[string]any); ok {
+			pbk, _ = meta["publicKey"].(string)
+			if sid == "" {
+				sid, _ = meta["shortId"].(string)
+			}
+		} else if meta, ok := settings["xpanelMeta"].(map[string]any); ok {
+			// legacy XPanel key
 			pbk, _ = meta["publicKey"].(string)
 			if sid == "" {
 				sid, _ = meta["shortId"].(string)
@@ -494,7 +500,7 @@ func (s *ServerApp) handlePutNginx(w http.ResponseWriter, r *http.Request) {
 }
 
 func defaultNginxTemplate() string {
-	return `# managed by XPanel — 下发到 Agent 的 nginx 配置草稿
+	return `# managed by BPanel — 下发到 Agent 的 nginx 配置草稿
 server {
     listen 80;
     server_name _;

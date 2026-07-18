@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/xpanel/xpanel/internal/master"
-	"github.com/xpanel/xpanel/internal/version"
-	"github.com/xpanel/xpanel/web"
+	"github.com/binshao1230/bpanel/internal/master"
+	"github.com/binshao1230/bpanel/internal/version"
+	"github.com/binshao1230/bpanel/web"
 )
 
 func main() {
@@ -35,7 +35,7 @@ func main() {
 	}
 	defer app.Close()
 
-	log.Printf("xpanel master %s listening on %s (data=%s)", version.Version, *addr, filepath.Clean(*data))
+	log.Printf("bpanel master %s listening on %s (data=%s)", version.Version, *addr, filepath.Clean(*data))
 	if err := http.ListenAndServe(*addr, app.Handler()); err != nil {
 		log.Fatal(err)
 	}

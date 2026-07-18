@@ -3,10 +3,33 @@ package master
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+// resolveDBPath prefers bpanel.db; migrates legacy xpanel.db if present.
+func resolveDBPath(dataDir string) string {
+	dir := filepath.Clean(dataDir)
+	primary := filepath.Join(dir, "bpanel.db")
+	legacy := filepath.Join(dir, "xpanel.db")
+	if _, err := os.Stat(primary); err == nil {
+		return primary
+	}
+	if _, err := os.Stat(legacy); err == nil {
+		// best-effort rename so old installs keep data under the new brand
+		if err := os.Rename(legacy, primary); err == nil {
+			// also rename WAL/SHM sidecars if present
+			_ = os.Rename(legacy+"-wal", primary+"-wal")
+			_ = os.Rename(legacy+"-shm", primary+"-shm")
+			return primary
+		}
+		return legacy
+	}
+	return primary
+}
 
 func openDB(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")

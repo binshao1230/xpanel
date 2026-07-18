@@ -1,6 +1,6 @@
 package xraycfg
 
-import "github.com/xpanel/xpanel/internal/acme"
+import "github.com/binshao1230/bpanel/internal/acme"
 
 // ApplyTLSFiles sets streamSettings to use TLS with certificate files (agent paths).
 func ApplyTLSFiles(stream map[string]any, domain string) map[string]any {

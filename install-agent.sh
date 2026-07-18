@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# XPanel Agent 一键安装（Linux）
+# BPanel Agent 一键安装（Linux）
 # 用法:
 #   curl -sL https://raw.githubusercontent.com/binshao1230/xpanel/main/install-agent.sh | \
 #     sudo bash -s -- -m http://主控IP:8080 -t INSTALL_TOKEN
 # 可选: -x /usr/local/bin/xray  -M auto|websocket|http  --with-xray
 set -euo pipefail
 
-REPO="${XPANEL_REPO:-binshao1230/xpanel}"
-APP_NAME="xpanel-agent"
-INSTALL_DIR="${XPANEL_AGENT_DIR:-/opt/xpanel-agent}"
+# 默认指向当前 GitHub 仓库；仓库改名后可设 BPANEL_REPO=binshao1230/bpanel
+REPO="${BPANEL_REPO:-binshao1230/xpanel}"
+APP_NAME="bpanel-agent"
+INSTALL_DIR="${BPANEL_AGENT_DIR:-/opt/bpanel-agent}"
 BIN_PATH="${INSTALL_DIR}/bin/${APP_NAME}"
 DATA_DIR="${INSTALL_DIR}/data"
-SERVICE_NAME="xpanel-agent"
+SERVICE_NAME="bpanel-agent"
 GITHUB_API="https://api.github.com/repos/${REPO}"
 
 MASTER_URL=""
@@ -23,7 +24,7 @@ WITH_XRAY=0
 red() { echo -e "\033[31m$*\033[0m"; }
 green() { echo -e "\033[32m$*\033[0m"; }
 yellow() { echo -e "\033[33m$*\033[0m"; }
-info() { echo -e "\033[36m[xpanel-agent]\033[0m $*"; }
+info() { echo -e "\033[36m[bpanel-agent]\033[0m $*"; }
 
 usage() {
   cat <<EOF
@@ -136,7 +137,7 @@ install_xray() {
 write_service() {
   cat >"/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
 [Unit]
-Description=XPanel Agent
+Description=BPanel Agent
 After=network-online.target
 Wants=network-online.target
 
