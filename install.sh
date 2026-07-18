@@ -13,6 +13,12 @@ INSTALL_DIR="${BPANEL_DIR:-/opt/bpanel}"
 BIN_PATH="${INSTALL_DIR}/bin/${APP_NAME}"
 DATA_DIR="${INSTALL_DIR}/data"
 SERVICE_NAME="bpanel-master"
+# 旧版 XPanel 路径（改名后 update 自动迁移）
+LEGACY_INSTALL_DIR="${XPANEL_DIR:-/opt/xpanel}"
+LEGACY_APP_NAME="xpanel-master"
+LEGACY_SERVICE_NAME="xpanel-master"
+LEGACY_BIN_PATH="${LEGACY_INSTALL_DIR}/bin/${LEGACY_APP_NAME}"
+LEGACY_DATA_DIR="${LEGACY_INSTALL_DIR}/data"
 DEFAULT_PORT="${PORT:-8080}"
 GITHUB_API="https://api.github.com/repos/${REPO}"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
@@ -112,11 +118,76 @@ install_binary() {
   green "已安装: ${BIN_PATH} (${tag})"
 }
 
+# 从 unit 文件里抠环境变量（兼容无 -P 的 grep）
+read_unit_env() {
+  local unit="$1" key="$2"
+  [[ -f "$unit" ]] || return 0
+  sed -n "s/^Environment=${key}=//p" "$unit" 2>/dev/null | head -n1 | tr -d '\r' || true
+}
+
+# XPanel → BPanel：迁移数据目录与旧 systemd 单元
+migrate_from_xpanel() {
+  # 1) 数据：新 data 为空且旧 data 有内容时迁过来
+  if [[ -d "${LEGACY_DATA_DIR}" ]]; then
+    mkdir -p "${DATA_DIR}"
+    local new_empty=1
+    if [[ -n "$(ls -A "${DATA_DIR}" 2>/dev/null || true)" ]]; then
+      new_empty=0
+    fi
+    if [[ "$new_empty" -eq 1 ]]; then
+      info "迁移旧数据 ${LEGACY_DATA_DIR} → ${DATA_DIR}"
+      # 尽量用 cp 保留原目录（用户可自行删 /opt/xpanel）
+      cp -a "${LEGACY_DATA_DIR}/." "${DATA_DIR}/"
+      green "数据已复制到 ${DATA_DIR}"
+    else
+      yellow "检测到 ${DATA_DIR} 已有数据，跳过数据迁移（旧目录: ${LEGACY_DATA_DIR}）"
+    fi
+  fi
+
+  # 2) 停掉旧服务，避免抢端口
+  if systemctl list-unit-files "${LEGACY_SERVICE_NAME}.service" 2>/dev/null | grep -q "${LEGACY_SERVICE_NAME}"; then
+    info "停止旧服务 ${LEGACY_SERVICE_NAME}"
+    systemctl stop "${LEGACY_SERVICE_NAME}" 2>/dev/null || true
+    systemctl disable "${LEGACY_SERVICE_NAME}" 2>/dev/null || true
+  fi
+  if [[ -f "/etc/systemd/system/${LEGACY_SERVICE_NAME}.service" ]]; then
+    # 保留一份备份，便于核对 JWT / PUBLIC_URL
+    cp -f "/etc/systemd/system/${LEGACY_SERVICE_NAME}.service" \
+      "/etc/systemd/system/${LEGACY_SERVICE_NAME}.service.bpanel-migrated.bak" 2>/dev/null || true
+  fi
+}
+
 write_service() {
-  local public_url jwt
+  local public_url jwt port
   public_url="${PUBLIC_URL:-}"
   jwt="${JWT_SECRET:-}"
+  port="${DEFAULT_PORT}"
+
+  # 优先继承新服务；否则继承旧 xpanel-master 服务配置
+  local unit_new="/etc/systemd/system/${SERVICE_NAME}.service"
+  local unit_old="/etc/systemd/system/${LEGACY_SERVICE_NAME}.service"
+  local unit_bak="/etc/systemd/system/${LEGACY_SERVICE_NAME}.service.bpanel-migrated.bak"
+
   if [[ -z "$jwt" ]]; then
+    jwt="$(read_unit_env "$unit_new" "JWT_SECRET")"
+  fi
+  if [[ -z "$jwt" ]]; then
+    jwt="$(read_unit_env "$unit_old" "JWT_SECRET")"
+  fi
+  if [[ -z "$jwt" && -f "$unit_bak" ]]; then
+    jwt="$(read_unit_env "$unit_bak" "JWT_SECRET")"
+  fi
+  if [[ -z "$public_url" ]]; then
+    public_url="$(read_unit_env "$unit_new" "PUBLIC_URL")"
+  fi
+  if [[ -z "$public_url" ]]; then
+    public_url="$(read_unit_env "$unit_old" "PUBLIC_URL")"
+  fi
+  if [[ -z "$public_url" && -f "$unit_bak" ]]; then
+    public_url="$(read_unit_env "$unit_bak" "PUBLIC_URL")"
+  fi
+
+  if [[ -z "$jwt" || "$jwt" == "change-me" ]]; then
     if command -v openssl >/dev/null 2>&1; then
       jwt="$(openssl rand -hex 24)"
     else
@@ -124,21 +195,11 @@ write_service() {
     fi
   fi
 
-  # preserve existing jwt if service already has one
-  if [[ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]]; then
-    local old
-    old="$(grep -oP 'JWT_SECRET=\K\S+' "/etc/systemd/system/${SERVICE_NAME}.service" 2>/dev/null || true)"
-    if [[ -n "$old" && "$old" != "change-me" ]]; then
-      jwt="$old"
-    fi
-  fi
-
   if [[ -z "$public_url" ]]; then
-    # best-effort public IP
-    public_url="http://$(curl -fsSL --max-time 3 https://api.ipify.org 2>/dev/null || echo "SERVER_IP"):${DEFAULT_PORT}"
+    public_url="http://$(curl -fsSL --max-time 3 https://api.ipify.org 2>/dev/null || echo "SERVER_IP"):${port}"
   fi
 
-  cat >"/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
+  cat >"${unit_new}" <<EOF
 [Unit]
 Description=BPanel Master - multi-server Xray control panel
 After=network-online.target
@@ -148,11 +209,11 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
-Environment=ADDR=:${DEFAULT_PORT}
+Environment=ADDR=:${port}
 Environment=DATA_DIR=${DATA_DIR}
 Environment=PUBLIC_URL=${public_url}
 Environment=JWT_SECRET=${jwt}
-ExecStart=${BIN_PATH} -addr :${DEFAULT_PORT} -data ${DATA_DIR} -public-url ${public_url} -jwt-secret ${jwt}
+ExecStart=${BIN_PATH} -addr :${port} -data ${DATA_DIR} -public-url ${public_url} -jwt-secret ${jwt}
 Restart=always
 RestartSec=3
 LimitNOFILE=1048576
@@ -160,6 +221,14 @@ LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 EOF
+
+  # 禁用并移除旧 unit（已备份）
+  if [[ -f "$unit_old" ]]; then
+    systemctl stop "${LEGACY_SERVICE_NAME}" 2>/dev/null || true
+    systemctl disable "${LEGACY_SERVICE_NAME}" 2>/dev/null || true
+    rm -f "$unit_old"
+    yellow "已替换旧服务单元 ${LEGACY_SERVICE_NAME} → ${SERVICE_NAME}"
+  fi
 
   systemctl daemon-reload
   systemctl enable "${SERVICE_NAME}" >/dev/null 2>&1 || true
@@ -169,12 +238,13 @@ EOF
   info "面板地址: ${public_url}"
   info "数据目录: ${DATA_DIR}"
   info "查看日志: journalctl -u ${SERVICE_NAME} -f"
-  yellow "请尽快打开面板完成管理员初始化，并按需修改 PUBLIC_URL / JWT_SECRET"
+  yellow "请打开面板确认数据正常；旧目录 ${LEGACY_INSTALL_DIR} 可在确认后手动删除"
 }
 
 do_install() {
   need_root
   require_cmd systemctl
+  migrate_from_xpanel
   install_binary
   write_service
 }
@@ -182,8 +252,21 @@ do_install() {
 do_update() {
   need_root
   require_cmd systemctl
+  migrate_from_xpanel
   install_binary
-  systemctl restart "${SERVICE_NAME}"
+  # 服务不存在（从 XPanel 改名后第一次 update）则创建并启动
+  if [[ ! -f "/etc/systemd/system/${SERVICE_NAME}.service" ]]; then
+    yellow "未找到 ${SERVICE_NAME}.service，正在创建（并迁移旧 XPanel 配置）…"
+    write_service
+  else
+    systemctl daemon-reload
+    systemctl restart "${SERVICE_NAME}"
+    # 若仍失败（例如 unit 损坏），重建
+    if ! systemctl is-active --quiet "${SERVICE_NAME}"; then
+      yellow "服务未正常运行，重建 unit…"
+      write_service
+    fi
+  fi
   green "更新完成"
   systemctl --no-pager -l status "${SERVICE_NAME}" || true
 }
@@ -192,7 +275,10 @@ do_uninstall() {
   need_root
   systemctl stop "${SERVICE_NAME}" 2>/dev/null || true
   systemctl disable "${SERVICE_NAME}" 2>/dev/null || true
+  systemctl stop "${LEGACY_SERVICE_NAME}" 2>/dev/null || true
+  systemctl disable "${LEGACY_SERVICE_NAME}" 2>/dev/null || true
   rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+  rm -f "/etc/systemd/system/${LEGACY_SERVICE_NAME}.service"
   systemctl daemon-reload
   if [[ "${REMOVE_DATA:-0}" == "1" ]]; then
     rm -rf "${INSTALL_DIR}"
