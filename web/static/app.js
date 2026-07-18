@@ -139,6 +139,51 @@ function showResult(title, body) {
 function closeResult() {
   $("#result-modal")?.classList.add("hidden");
 }
+
+function closeQR() {
+  $("#qr-modal")?.classList.add("hidden");
+  state._qrLink = "";
+}
+
+async function showQR(opts = {}) {
+  const { title, name, link, inboundId } = opts;
+  const modal = $("#qr-modal");
+  if (!modal) return;
+  $("#qr-title").textContent = title || "节点二维码";
+  $("#qr-name").textContent = name || "";
+  $("#qr-link").textContent = "生成中…";
+  $("#qr-img").removeAttribute("src");
+  modal.classList.remove("hidden");
+  try {
+    let data;
+    if (inboundId) {
+      try {
+        data = await api("/api/inbounds/" + inboundId + "/qr");
+      } catch (e) {
+        if (!link) throw e;
+        data = await api("/api/qr", { method: "POST", body: JSON.stringify({ text: link, size: 280 }) });
+        data.link = link;
+        data.name = name;
+      }
+    } else if (link) {
+      data = await api("/api/qr", { method: "POST", body: JSON.stringify({ text: link, size: 280 }) });
+      data.link = link;
+      data.name = name;
+    } else {
+      throw new Error("没有可生成二维码的链接");
+    }
+    const url = data.data_url || (data.png_base64 ? "data:image/png;base64," + data.png_base64 : "");
+    if (!url) throw new Error("二维码生成失败");
+    $("#qr-img").src = url;
+    $("#qr-link").textContent = data.link || link || "";
+    $("#qr-name").textContent = data.name || name || data.protocol || "";
+    state._qrLink = data.link || link || "";
+    state._qrDataUrl = url;
+  } catch (e) {
+    closeQR();
+    toast(e.message, "err");
+  }
+}
 function setSideOpen(open) {
   $("#view-main")?.classList.toggle("side-open", !!open);
 }
@@ -366,6 +411,20 @@ $("#modal-copy") && ($("#modal-copy").onclick = () => copyText($("#install-cmd")
 $("#result-close") && ($("#result-close").onclick = closeResult);
 $("#result-close-2") && ($("#result-close-2").onclick = closeResult);
 $("#result-copy") && ($("#result-copy").onclick = () => copyText($("#result-body")?.textContent || "").catch(() => {}));
+$("#qr-close") && ($("#qr-close").onclick = closeQR);
+$("#qr-close-2") && ($("#qr-close-2").onclick = closeQR);
+$("#qr-copy") && ($("#qr-copy").onclick = () => {
+  copyText(state._qrLink || $("#qr-link")?.textContent || "").catch((e) => toast(e.message, "err"));
+});
+$("#qr-download") && ($("#qr-download").onclick = () => {
+  const url = state._qrDataUrl || $("#qr-img")?.src;
+  if (!url) return toast("没有可下载的二维码", "warn");
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "bpanel-node-qr.png";
+  a.click();
+  toast("已开始下载", "ok", 1200);
+});
 $("#btn-side-toggle") && ($("#btn-side-toggle").onclick = () => {
   const open = !($("#view-main")?.classList.contains("side-open"));
   setSideOpen(open);
@@ -1091,6 +1150,7 @@ function renderInboundList() {
       </div>
       <div class="item-actions row">
         <button class="small" data-act="edit" data-id="${inb.id}">编辑</button>
+        <button class="small" data-act="qr" data-id="${inb.id}" ${link ? "" : "disabled"} title="二维码">二维码</button>
         <button class="small" data-act="copy" data-id="${inb.id}" ${link ? "" : "disabled"}>复制链接</button>
         <button class="small" data-act="clone" data-id="${inb.id}">克隆</button>
         <button class="small" data-act="toggle" data-id="${inb.id}" data-en="${en ? 0 : 1}">${en ? "禁用" : "启用"}</button>
@@ -1136,6 +1196,15 @@ async function refreshInbounds() {
       const link = state.inboundLinks[id];
       if (!link) return toast("暂无分享链接", "warn");
       try { await copyText(link); } catch (err) { toast(err.message, "err"); }
+      return;
+    }
+    if (btn.dataset.act === "qr") {
+      const inb = (state.inboundsCache || []).find((x) => String(x.id) === String(id));
+      showQR({
+        inboundId: id,
+        name: inb ? (inb.share_name || inb.tag) : "",
+        title: "节点二维码",
+      });
       return;
     }
     if (btn.dataset.act === "clone") {
@@ -1220,6 +1289,7 @@ function initInboundEditorUI() {
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if ($("#in-drawer") && !$("#in-drawer").classList.contains("hidden")) closeNodeDrawer();
+    else if ($("#qr-modal") && !$("#qr-modal").classList.contains("hidden")) closeQR();
     else if ($("#result-modal") && !$("#result-modal").classList.contains("hidden")) closeResult();
     else if ($("#modal") && !$("#modal").classList.contains("hidden")) $("#modal").classList.add("hidden");
   });
@@ -1288,9 +1358,22 @@ $("#btn-in-save") && ($("#btn-in-save").onclick = async () => {
     if (pk) msg += "\n\nReality publicKey:\n" + pk;
     toast(id ? "节点已更新并下发" : "节点已创建并下发", "ok");
     showResult(id ? "更新成功" : "创建成功", msg);
+    const newId = r.id || id;
+    const share = r.share_link || "";
     resetInboundForm();
     closeNodeDrawer();
     await refreshInbounds();
+    // 新建/更新后若有分享链接，弹出二维码方便扫码导入
+    if (share || newId) {
+      setTimeout(() => {
+        showQR({
+          title: id ? "节点二维码" : "创建成功 · 扫码导入",
+          name: r.tag || "",
+          link: share,
+          inboundId: newId,
+        });
+      }, 200);
+    }
   } catch (e) {
     toast(e.message, "err");
   } finally {
@@ -1322,6 +1405,14 @@ $("#btn-reality") && ($("#btn-reality").onclick = async () => {
     toast("Reality 节点已创建", "ok");
     showResult("Reality 已创建", `PublicKey:\n${r.public_key}\n\n分享链接:\n${r.share_link || ""}`);
     await refreshInbounds();
+    if (r.share_link || r.id) {
+      setTimeout(() => showQR({
+        title: "Reality · 扫码导入",
+        name: r.tag || "reality",
+        link: r.share_link || "",
+        inboundId: r.id,
+      }), 200);
+    }
   } catch (e) {
     toast(e.message, "err");
   }
@@ -1671,13 +1762,25 @@ async function refreshLinks() {
   const data = await api("/api/inbounds/links");
   const links = data.links || [];
   state._linkByIdx = links.map((l) => l.link || "");
+  state._linkMeta = links;
   $("#links-list").innerHTML = links.map((l, i) => `
     <div class="item" style="align-items:flex-start"><div style="flex:1">
       <strong>${escapeHtml(l.name)}</strong> · ${escapeHtml(l.protocol)} ${escapeHtml(l.address)}:${l.port}
       <div class="mono" style="margin-top:.4rem">${escapeHtml(l.link || "(empty)")}</div>
     </div>
-    <button class="small" data-copy-idx="${i}">复制</button></div>`).join("") || '<p class="muted">暂无</p>';
+    <div class="item-actions row">
+      <button class="small" data-qr-idx="${i}" ${l.link ? "" : "disabled"}>二维码</button>
+      <button class="small" data-copy-idx="${i}">复制</button>
+    </div></div>`).join("") || '<p class="muted">暂无</p>';
   $("#links-list").onclick = async (e) => {
+    const qbtn = e.target.closest("button[data-qr-idx]");
+    if (qbtn) {
+      const i = Number(qbtn.dataset.qrIdx);
+      const meta = (state._linkMeta || [])[i] || {};
+      const link = (state._linkByIdx || [])[i] || "";
+      showQR({ title: "节点二维码", name: meta.name || "", link, inboundId: meta.id });
+      return;
+    }
     const btn = e.target.closest("button[data-copy-idx]");
     if (!btn) return;
     const link = (state._linkByIdx || [])[Number(btn.dataset.copyIdx)] || "";

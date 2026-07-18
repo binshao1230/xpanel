@@ -1305,6 +1305,21 @@ button.danger-fill {
   margin: 0.25rem 0 0;
 }
 
+/* 节点二维码 */
+.qr-frame {
+  display: inline-flex;
+  padding: 0.75rem;
+  background: #fff;
+  border: 3px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.15);
+}
+.qr-frame img {
+  display: block;
+  width: 280px;
+  height: 280px;
+  image-rendering: pixelated;
+}
+
 @media (max-width: 960px) {
   .icon-btn {
     display: inline-flex;

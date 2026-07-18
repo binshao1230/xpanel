@@ -107,8 +107,11 @@ func (s *ServerApp) routes() {
 	s.mux.HandleFunc("POST /api/inbounds/quick-reality", s.adminOnly(s.handleQuickRealityV5))
 	s.mux.HandleFunc("POST /api/inbounds", s.adminOnly(s.handleCreateInbound))
 	s.mux.HandleFunc("GET /api/inbounds/{id}", s.authMiddleware(s.handleGetInbound))
+	s.mux.HandleFunc("GET /api/inbounds/{id}/qr", s.authMiddleware(s.handleInboundQR))
 	s.mux.HandleFunc("PUT /api/inbounds/{id}", s.adminOnly(s.handleUpdateInbound))
 	s.mux.HandleFunc("DELETE /api/inbounds/{id}", s.adminOnly(s.handleDeleteInbound))
+	s.mux.HandleFunc("GET /api/qr", s.authMiddleware(s.handleQRCode))
+	s.mux.HandleFunc("POST /api/qr", s.authMiddleware(s.handleQRCode))
 	s.mux.HandleFunc("POST /api/outbounds/quick-warp", s.adminOnly(s.handleQuickWARP))
 
 	// tunnels / invites / nginx / audit

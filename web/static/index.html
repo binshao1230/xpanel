@@ -759,6 +759,25 @@
     </div>
   </div>
 
+  <div id="qr-modal" class="modal hidden">
+    <div class="modal-body modal-sm" style="text-align:center">
+      <div class="modal-head">
+        <h3 id="qr-title" style="margin:0">节点二维码</h3>
+        <button type="button" class="small ghost" id="qr-close">✕</button>
+      </div>
+      <div id="qr-name" class="meta" style="margin-bottom:.5rem"></div>
+      <div class="qr-frame">
+        <img id="qr-img" alt="QR" width="280" height="280" />
+      </div>
+      <div class="mono" id="qr-link" style="margin-top:.75rem;text-align:left;max-height:6em;overflow:auto;word-break:break-all"></div>
+      <div class="row" style="margin-top:.85rem;justify-content:center">
+        <button type="button" class="primary" id="qr-copy">复制链接</button>
+        <button type="button" class="ghost" id="qr-download">下载 PNG</button>
+        <button type="button" class="ghost" id="qr-close-2">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast-stack" id="toast-stack"></div>
   <div class="theme-toast" id="theme-toast"></div>
   <script src="/static/app.js"></script>
