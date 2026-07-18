@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 type InboundSpec struct {
@@ -52,25 +53,42 @@ func Build(opts BuildOptions) (map[string]any, string, error) {
 		if tag == "" {
 			tag = fmt.Sprintf("in-%d", i+1)
 		}
+		proto := strings.ToLower(in.Protocol)
+		if proto == "ss" {
+			proto = "shadowsocks"
+		}
+		if proto == "dokodemo" || proto == "tunnel" {
+			proto = "dokodemo-door"
+		}
+		if proto == "hy2" || proto == "hysteria2" {
+			proto = "hysteria"
+		}
 		settings := in.Settings
 		if settings == nil {
-			settings = defaultSettings(in.Protocol)
+			settings = defaultSettings(proto)
 		}
 		stream := in.Stream
 		if stream == nil {
 			stream = map[string]any{"network": "tcp"}
 		}
-		inList = append(inList, map[string]any{
+		// strip panel meta again (safety)
+		delete(settings, "bpanelMeta")
+		delete(settings, "xpanelMeta")
+
+		item := map[string]any{
 			"tag":            tag,
-			"protocol":       in.Protocol,
+			"protocol":       proto,
 			"port":           in.Port,
 			"settings":       settings,
 			"streamSettings": stream,
-			"sniffing": map[string]any{
+		}
+		if ShouldSniff(proto) {
+			item["sniffing"] = map[string]any{
 				"enabled":      true,
 				"destOverride": []string{"http", "tls", "quic"},
-			},
-		})
+			}
+		}
+		inList = append(inList, item)
 	}
 
 	outList := []map[string]any{

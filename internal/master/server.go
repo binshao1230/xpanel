@@ -672,6 +672,7 @@ func (s *ServerApp) buildConfigBundle(serverID string) (*protocol.ConfigBundle, 
 		return nil, err
 	}
 	var inSpecs []xraycfg.InboundSpec
+	var skipped []string
 	for rows.Next() {
 		var tag, proto, sj, st string
 		var port int
@@ -682,20 +683,33 @@ func (s *ServerApp) buildConfigBundle(serverID string) (*protocol.ConfigBundle, 
 		var settings, stream map[string]any
 		_ = json.Unmarshal([]byte(sj), &settings)
 		_ = json.Unmarshal([]byte(st), &stream)
-		if settings != nil {
-			delete(settings, "bpanelMeta") // not for xray core
-			delete(settings, "xpanelMeta") // legacy
+		if settings == nil {
+			settings = map[string]any{}
 		}
+		if stream == nil {
+			stream = map[string]any{"network": "tcp"}
+		}
+		// bind cert paths before sanitize (TLS needs certificateFile)
 		if certID > 0 {
 			if domain, ok := certDomainByID[certID]; ok {
 				stream = xraycfg.MergeTLSIfNeeded(stream, domain)
 			}
 		}
+		cleanSettings, cleanStream, skipReason := xraycfg.SanitizeInbound(proto, port, settings, stream)
+		if skipReason != "" {
+			skipped = append(skipped, fmt.Sprintf("%s(%s): %s", tag, proto, skipReason))
+			log.Printf("server %s skip inbound %s: %s", serverID, tag, skipReason)
+			continue
+		}
 		inSpecs = append(inSpecs, xraycfg.InboundSpec{
-			Tag: tag, Protocol: proto, Port: port, Settings: settings, Stream: stream,
+			Tag: tag, Protocol: proto, Port: port, Settings: cleanSettings, Stream: cleanStream,
 		})
 	}
 	rows.Close()
+	if len(skipped) > 0 {
+		// surface on server agent_error-like note via log; also store soft warning for UI if desired
+		log.Printf("server %s skipped %d inbound(s): %v", serverID, len(skipped), skipped)
+	}
 
 	orows, err := s.db.Query(`SELECT tag,protocol,settings_json,stream_json FROM outbounds WHERE server_id=? AND enabled=1`, serverID)
 	if err != nil {

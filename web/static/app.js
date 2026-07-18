@@ -662,11 +662,13 @@ const NODE_TEMPLATES = {
     fp: "chrome", alpn: "", method: "aes-256-gcm",
   },
   "anytls-tls": {
+    // 需支持 anytls 的内核；官方 Xray 主线可能不支持，下发时会被跳过以免拖垮全部节点
     proto: "anytls", port: 443, network: "tcp", security: "tls",
     flow: "", path: "", host: "", sni: "", dest: "",
     fp: "chrome", alpn: "h2,http/1.1", method: "aes-256-gcm",
   },
   "hysteria2-tls": {
+    // 需要绑定证书（ACME），否则不会下发
     proto: "hysteria", port: 443, network: "hysteria", security: "tls",
     flow: "", path: "", host: "", sni: "", dest: "",
     fp: "chrome", alpn: "h3", method: "aes-256-gcm",
@@ -1342,6 +1344,14 @@ $("#btn-in-save") && ($("#btn-in-save").onclick = async () => {
     const payload = collectInboundPayload();
     if (!payload.server_id) return toast("请选择服务器", "warn");
     if (!payload.port) return toast("端口无效", "warn");
+    // 拦截会导致整机 Xray 挂掉的配置
+    if (payload.security === "tls" && !(Number(payload.cert_id) > 0) &&
+        ["vless", "vmess", "trojan", "hysteria", "anytls"].includes(payload.protocol)) {
+      return toast("TLS 需要先绑定有效证书（证书 ACME），或改用 Reality / none", "warn");
+    }
+    if (payload.protocol === "anytls") {
+      toast("提示：AnyTLS 需支持该协议的 Xray；官方内核下发时会跳过，以免影响其它节点", "info", 4000);
+    }
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "保存中…"; }
     let r;
     if (id) {
