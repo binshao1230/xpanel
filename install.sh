@@ -232,8 +232,20 @@ EOF
 
   systemctl daemon-reload
   systemctl enable "${SERVICE_NAME}" >/dev/null 2>&1 || true
-  systemctl restart "${SERVICE_NAME}"
-  green "systemd 服务已启动: ${SERVICE_NAME}"
+  # 不用裸 restart：unit 刚创建时某些环境会报 not found；先 start 再 restart
+  if systemctl cat "${SERVICE_NAME}.service" >/dev/null 2>&1; then
+    systemctl restart "${SERVICE_NAME}" || systemctl start "${SERVICE_NAME}"
+  else
+    systemctl start "${SERVICE_NAME}"
+  fi
+  if systemctl is-active --quiet "${SERVICE_NAME}"; then
+    green "systemd 服务已启动: ${SERVICE_NAME}"
+  else
+    red "服务启动失败，请检查: systemctl status ${SERVICE_NAME} -l"
+    systemctl --no-pager -l status "${SERVICE_NAME}" || true
+    journalctl -u "${SERVICE_NAME}" -n 30 --no-pager || true
+    return 1
+  fi
   echo
   info "面板地址: ${public_url}"
   info "数据目录: ${DATA_DIR}"
@@ -254,19 +266,10 @@ do_update() {
   require_cmd systemctl
   migrate_from_xpanel
   install_binary
-  # 服务不存在（从 XPanel 改名后第一次 update）则创建并启动
-  if [[ ! -f "/etc/systemd/system/${SERVICE_NAME}.service" ]]; then
-    yellow "未找到 ${SERVICE_NAME}.service，正在创建（并迁移旧 XPanel 配置）…"
-    write_service
-  else
-    systemctl daemon-reload
-    systemctl restart "${SERVICE_NAME}"
-    # 若仍失败（例如 unit 损坏），重建
-    if ! systemctl is-active --quiet "${SERVICE_NAME}"; then
-      yellow "服务未正常运行，重建 unit…"
-      write_service
-    fi
-  fi
+  # 始终重写并启用 unit：兼容 XPanel→BPanel 改名、CDN 缓存旧脚本、unit 缺失等情况
+  # （write_service 会继承旧 JWT/PUBLIC_URL，停掉 xpanel-master）
+  info "写入/更新 systemd 单元 ${SERVICE_NAME}.service …"
+  write_service
   green "更新完成"
   systemctl --no-pager -l status "${SERVICE_NAME}" || true
 }
