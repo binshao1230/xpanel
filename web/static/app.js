@@ -35,32 +35,23 @@ function escapeHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
   );
 }
-// —— 柔和主题：手动 + 每小时自动优化 ——
-const MANUAL_THEMES = ["dark", "light", "anime", "flat"];
-const AUTO_THEMES = ["auto-dawn", "auto-day", "auto-dusk", "auto-night", "auto-mist", "auto-sakura"];
+// —— 妙妙屋同款主题：light → dark → system 循环 ——
+const THEME_MODES = ["light", "dark", "system"];
 const THEME_LABELS = {
-  dark: "柔和暗色",
-  light: "柔和亮色",
-  anime: "柔粉",
-  flat: "扁平",
-  "auto-dawn": "清晨暖雾",
-  "auto-day": "日间柔光",
-  "auto-dusk": "黄昏藕紫",
-  "auto-night": "深夜静蓝",
-  "auto-mist": "薄雾青灰",
-  "auto-sakura": "夜樱浅粉",
-  auto: "自动（每小时）",
+  light: "浅色模式",
+  dark: "深色模式",
+  system: "跟随系统",
+};
+const THEME_ICONS = {
+  light: "☀",
+  dark: "☾",
+  system: "◐",
 };
 
-function pickHourlyTheme(date = new Date()) {
-  const h = date.getHours();
-  // 按时段选基底，再按小时微调，避免生硬跳变
-  if (h >= 5 && h < 8) return "auto-dawn";
-  if (h >= 8 && h < 11) return h % 2 === 0 ? "auto-day" : "auto-mist";
-  if (h >= 11 && h < 16) return "auto-day";
-  if (h >= 16 && h < 19) return "auto-dusk";
-  if (h >= 19 && h < 22) return h % 2 === 0 ? "auto-sakura" : "auto-dusk";
-  return h % 2 === 0 ? "auto-night" : "auto-sakura";
+function resolveTheme(mode) {
+  if (mode === "light") return "light";
+  if (mode === "dark") return "dark";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function showThemeToast(text) {
@@ -74,68 +65,77 @@ function showThemeToast(text) {
 
 function setTheme(mode, opts = {}) {
   const quiet = !!opts.quiet;
-  const modeKey = mode || "auto";
+  let modeKey = mode || "system";
+  // 兼容旧值
+  if (modeKey === "auto" || modeKey === "anime" || modeKey === "flat" || String(modeKey).startsWith("auto-")) {
+    modeKey = "system";
+  }
+  if (!THEME_MODES.includes(modeKey)) modeKey = "system";
   localStorage.setItem("xpanel_theme_mode", modeKey);
 
-  let applied = modeKey;
-  if (modeKey === "auto") {
-    applied = pickHourlyTheme();
-  } else if (!MANUAL_THEMES.includes(modeKey) && !AUTO_THEMES.includes(modeKey)) {
-    applied = "dark";
+  const applied = resolveTheme(modeKey);
+  document.documentElement.classList.toggle("dark", applied === "dark");
+  document.documentElement.removeAttribute("data-theme");
+
+  const meta = document.querySelector("meta[name='theme-color']");
+  if (meta) meta.setAttribute("content", applied === "dark" ? "#10131c" : "#fffaf7");
+
+  const label = THEME_LABELS[modeKey] || modeKey;
+  const ico = $("#theme-ico");
+  const lab = $("#theme-label");
+  if (ico) ico.textContent = THEME_ICONS[modeKey] || "◐";
+  if (lab) lab.textContent = label;
+  const cycle = $("#theme-cycle");
+  if (cycle) {
+    cycle.title = label;
+    cycle.setAttribute("aria-label", label);
   }
-
-  document.documentElement.setAttribute("data-theme", applied);
-  const segMode = MANUAL_THEMES.includes(modeKey) || modeKey === "auto" ? modeKey : "auto";
-  $$("#theme-seg button").forEach((b) => b.classList.toggle("active", b.dataset.t === segMode));
-
   const hint = $("#theme-hint");
   if (hint) {
-    const label = THEME_LABELS[modeKey === "auto" ? applied : modeKey] || applied;
-    hint.textContent = modeKey === "auto"
-      ? `自动 · ${label} · 下小时优化`
+    hint.textContent = modeKey === "system"
+      ? `跟随系统 · 当前${applied === "dark" ? "深色" : "浅色"}`
       : `主题 · ${label}`;
   }
-  if (!quiet) {
-    const label = THEME_LABELS[modeKey === "auto" ? applied : modeKey] || applied;
-    showThemeToast(modeKey === "auto" ? `已切换：${label}` : `主题：${label}`);
-  }
-  // 同步设置页下拉（若已渲染）
+  if (!quiet) showThemeToast(label);
+
   const sel = $("#set-theme");
-  if (sel && (MANUAL_THEMES.includes(modeKey) || modeKey === "auto")) {
-    sel.value = modeKey;
-  }
-  return applied;
+  if (sel) sel.value = modeKey;
+  return modeKey;
 }
 
-function startHourlyThemeOptimizer() {
-  // 每分钟检查一次整点，避免 setInterval 漂移
-  if (startHourlyThemeOptimizer._id) clearInterval(startHourlyThemeOptimizer._id);
-  let lastHour = new Date().getHours();
-  startHourlyThemeOptimizer._id = setInterval(() => {
-    const mode = localStorage.getItem("xpanel_theme_mode") || "auto";
-    if (mode !== "auto") return;
-    const h = new Date().getHours();
-    if (h !== lastHour) {
-      lastHour = h;
-      setTheme("auto", { quiet: false });
-    }
-  }, 60 * 1000);
-  // 进入页面也对齐当前时段
-  if ((localStorage.getItem("xpanel_theme_mode") || "auto") === "auto") {
-    setTheme("auto", { quiet: true });
-  }
+function cycleTheme() {
+  const cur = localStorage.getItem("xpanel_theme_mode") || "system";
+  // 与妙妙屋 ThemeSwitch 一致：light → dark → system → light
+  let next = "light";
+  if (cur === "light") next = "dark";
+  else if (cur === "dark") next = "system";
+  else next = "light";
+  setTheme(next);
+}
+
+function watchSystemTheme() {
+  if (watchSystemTheme._mq) return;
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  const onChange = () => {
+    const mode = localStorage.getItem("xpanel_theme_mode") || "system";
+    if (mode === "system") setTheme("system", { quiet: true });
+  };
+  if (mq.addEventListener) mq.addEventListener("change", onChange);
+  else if (mq.addListener) mq.addListener(onChange);
+  watchSystemTheme._mq = mq;
 }
 
 async function boot() {
-  // 兼容旧 key：xpanel_theme → xpanel_theme_mode
+  // 兼容旧 key
   let mode = localStorage.getItem("xpanel_theme_mode");
   if (!mode) {
     const legacy = localStorage.getItem("xpanel_theme");
-    mode = legacy && legacy !== "auto" ? legacy : "auto";
+    if (legacy === "light" || legacy === "dark") mode = legacy;
+    else mode = "system";
     localStorage.setItem("xpanel_theme_mode", mode);
   }
   setTheme(mode, { quiet: true });
-  startHourlyThemeOptimizer();
+  watchSystemTheme();
 
   const meta = await api("/api/meta");
   state.meta = meta;
@@ -241,9 +241,8 @@ $("#auth-btn").onclick = async () => {
 };
 
 $$("#nav .nav").forEach((btn) => { btn.onclick = () => switchTab(btn.dataset.tab); });
-$$("#theme-seg button").forEach((b) => {
-  b.onclick = () => setTheme(b.dataset.t || "auto");
-});
+const themeCycleBtn = $("#theme-cycle");
+if (themeCycleBtn) themeCycleBtn.onclick = () => cycleTheme();
 $("#btn-logout").onclick = () => { localStorage.removeItem("xpanel_token"); location.reload(); };
 $("#modal-close").onclick = () => $("#modal").classList.add("hidden");
 
@@ -820,8 +819,9 @@ async function refreshSettings() {
   const data = await api("/api/settings");
   const s = data.settings || {};
   $("#set-site").value = s.site_name || "XPanel";
-  const themeMode = localStorage.getItem("xpanel_theme_mode") || s.theme || "auto";
-  $("#set-theme").value = themeMode === "auto" || MANUAL_THEMES.includes(themeMode) ? themeMode : "auto";
+  let themeMode = localStorage.getItem("xpanel_theme_mode") || s.theme || "system";
+  if (!THEME_MODES.includes(themeMode)) themeMode = "system";
+  $("#set-theme").value = themeMode;
   $("#set-probe").value = s.probe_mode || "off";
   $("#set-acme-email").value = s.acme_email || "";
   $("#set-cf-token").value = s.cf_dns_api_token || "";
@@ -831,7 +831,8 @@ async function refreshSettings() {
   if (s.acme_email && $("#acme-email") && !$("#acme-email").value) $("#acme-email").value = s.acme_email;
 }
 $("#btn-save-set").onclick = async () => {
-  const themeMode = $("#set-theme").value || "auto";
+  let themeMode = $("#set-theme").value || "system";
+  if (!THEME_MODES.includes(themeMode)) themeMode = "system";
   await api("/api/settings", {
     method: "PUT",
     body: JSON.stringify({

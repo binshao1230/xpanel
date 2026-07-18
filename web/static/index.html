@@ -1,10 +1,20 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#fffaf7" />
   <title>XPanel · 多机 Xray 面板</title>
   <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    /* 防闪：与妙妙屋一致 light / dark / system */
+    (function () {
+      var t = localStorage.getItem("xpanel_theme_mode") || "system";
+      if (t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+        document.documentElement.classList.add("dark");
+      }
+    })();
+  </script>
 </head>
 <body>
   <div id="app">
@@ -47,14 +57,11 @@
         </nav>
         <div class="side-foot">
           <div id="nav-user" class="muted"></div>
-          <div class="seg" id="theme-seg">
-            <button type="button" data-t="auto">自动</button>
-            <button type="button" data-t="dark">暗</button>
-            <button type="button" data-t="light">亮</button>
-            <button type="button" data-t="anime">柔粉</button>
-            <button type="button" data-t="flat">扁平</button>
-          </div>
-          <div class="theme-hint" id="theme-hint">主题：柔和模式</div>
+          <button type="button" class="theme-cycle" id="theme-cycle" title="切换主题" aria-label="切换主题">
+            <span class="theme-ico" id="theme-ico">◐</span>
+            <span id="theme-label">跟随系统</span>
+          </button>
+          <div class="theme-hint" id="theme-hint">妙妙屋主题 · light → dark → system</div>
           <button id="btn-logout" class="ghost">退出登录</button>
         </div>
       </aside>
@@ -289,13 +296,11 @@
           <div class="page-head"><div><h2>系统设置</h2></div></div>
           <div class="card">
             <label>站点名称 <input id="set-site" /></label>
-            <label>主题策略
+            <label>主题（与妙妙屋一致）
               <select id="set-theme">
-                <option value="auto">auto 每小时按时段柔和切换</option>
-                <option value="dark">dark 柔和暗色</option>
-                <option value="light">light 柔和亮色</option>
-                <option value="anime">anime 柔粉</option>
-                <option value="flat">flat 扁平</option>
+                <option value="light">浅色 light</option>
+                <option value="dark">深色 dark</option>
+                <option value="system">跟随系统 system</option>
               </select>
             </label>
             <label>伪装探针模式
