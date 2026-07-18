@@ -1140,6 +1140,12 @@ details.fold .fold-body.grid2 {
   align-items: center;
   margin-bottom: 0.75rem;
 }
+.chip-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  margin: 0 0.15rem 0 0.35rem;
+  text-transform: uppercase;
+}
 .chip-btn {
   font-size: 0.78rem;
   padding: 0.3rem 0.65rem;
@@ -1148,6 +1154,14 @@ details.fold .fold-body.grid2 {
 }
 .chip-btn:hover {
   background: rgba(217, 119, 87, 0.16);
+}
+.err-line {
+  color: var(--danger) !important;
+  margin-top: 0.25rem;
+  line-height: 1.4;
+}
+button.primary.small {
+  font-weight: 600;
 }
 .list-toolbar {
   margin-bottom: 0.75rem;

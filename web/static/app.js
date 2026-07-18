@@ -51,22 +51,22 @@ function escapeHtml(s) {
 }
 
 const PAGE_META = {
-  dash: { title: "仪表盘", sub: "总览在线节点、流量与趋势" },
-  servers: { title: "服务器", sub: "主控 · Agent · 一键部署" },
-  inbounds: { title: "入站节点", sub: "模板创建 · 侧滑编辑 · 一键复制" },
-  outbounds: { title: "出站 / 路由", sub: "WARP、分流规则" },
-  tunnels: { title: "中转隧道", sub: "端口转发" },
-  plans: { title: "套餐", sub: "流量与有效期" },
-  users: { title: "用户 / 续费", sub: "账号与配额" },
-  invites: { title: "邀请码", sub: "注册绑定套餐" },
-  nodes: { title: "外部节点", sub: "导入分享链接" },
-  certs: { title: "证书 ACME", sub: "申请与下发" },
-  nginx: { title: "Nginx", sub: "配置草稿" },
-  traffic: { title: "流量", sub: "用量统计" },
-  speed: { title: "测速", sub: "TCP / TLS 连通" },
-  links: { title: "URI 分享", sub: "节点链接一览" },
-  sub: { title: "我的订阅", sub: "一键复制到客户端" },
-  settings: { title: "系统设置", sub: "站点与主题" },
+  dash: { title: "仪表盘", sub: "机器状态、节点数量与近两周流量" },
+  servers: { title: "服务器", sub: "接入机器、安装 Agent、下发配置" },
+  inbounds: { title: "入站节点", sub: "模板创建 · 侧滑编辑 · 二维码分享" },
+  outbounds: { title: "出站与路由", sub: "WARP 出口与分流规则" },
+  tunnels: { title: "中转隧道", sub: "端口转发与链式中转" },
+  plans: { title: "套餐", sub: "流量额度与有效期" },
+  users: { title: "成员", sub: "账号、套餐绑定与续期" },
+  invites: { title: "邀请码", sub: "邀请注册并自动绑定套餐" },
+  nodes: { title: "外部节点", sub: "导入其它面板的分享链接" },
+  certs: { title: "证书", sub: "申请、上传并下发到 Agent" },
+  nginx: { title: "Nginx", sub: "按服务器维护配置草稿" },
+  traffic: { title: "流量统计", sub: "用量汇总与每日明细" },
+  speed: { title: "连通测速", sub: "从主控探测 TCP / TLS 可达性" },
+  links: { title: "分享链接", sub: "一键复制或扫码导入客户端" },
+  sub: { title: "我的订阅", sub: "复制到客户端即可使用" },
+  settings: { title: "设置", sub: "站点、外观与主控更新" },
 };
 
 function toast(msg, type = "info", ms = 2800) {
@@ -494,7 +494,7 @@ function drawChart(series) {
   const max = Math.max(1, ...series.map((x) => (x.up || 0) + (x.down || 0)));
   const pad = 20;
   const step = (w - pad * 2) / Math.max(1, series.length - 1);
-  ctx.strokeStyle = "#7c6cff";
+  ctx.strokeStyle = "#d97757";
   ctx.lineWidth = 2;
   ctx.beginPath();
   series.forEach((p, i) => {
@@ -503,7 +503,7 @@ function drawChart(series) {
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   });
   ctx.stroke();
-  ctx.fillStyle = "rgba(124,108,255,.15)";
+  ctx.fillStyle = "rgba(217,119,87,.14)";
   ctx.lineTo(pad + (series.length - 1) * step, h - pad);
   ctx.lineTo(pad, h - pad);
   ctx.closePath();
@@ -513,10 +513,10 @@ function drawChart(series) {
 async function refreshDash() {
   const d = await api("/api/dashboard");
   $("#dash-stats").innerHTML = [
-    ["用户", d.users], ["服务器", d.servers], ["在线", d.online], ["离线", d.offline || 0],
-    ["入站", d.inbounds], ["套餐", d.plans],
-    ["上行", fmtBytes(d.traffic_up)], ["下行", fmtBytes(d.traffic_down)],
-    ["实时↑", fmtSpeed(d.speed_up)], ["实时↓", fmtSpeed(d.speed_down)],
+    ["成员", d.users], ["服务器", d.servers], ["在线", d.online], ["离线", d.offline || 0],
+    ["节点", d.inbounds], ["套餐", d.plans],
+    ["累计上行", fmtBytes(d.traffic_up)], ["累计下行", fmtBytes(d.traffic_down)],
+    ["实时上行", fmtSpeed(d.speed_up)], ["实时下行", fmtSpeed(d.speed_down)],
   ].map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   drawChart(d.series || []);
 }
@@ -540,9 +540,9 @@ async function fillCertSelect() {
   state.certs = data.certificates || [];
   const sel = $("#in-cert");
   if (!sel) return;
-  sel.innerHTML = '<option value="0">无证书 / Reality 自管</option>' +
+  sel.innerHTML = '<option value="0">不使用证书（Reality / 无加密）</option>' +
     state.certs.filter((c) => c.status === "active").map((c) =>
-      `<option value="${c.id}">${escapeHtml(c.domain)} (#${c.id})</option>`).join("");
+      `<option value="${c.id}">${escapeHtml(c.domain)}</option>`).join("");
 }
 
 $$("#srv-filter button").forEach((b) => {
@@ -556,51 +556,58 @@ $$("#srv-filter button").forEach((b) => {
 async function refreshServers() {
   const data = await api("/api/servers");
   state.servers = data.servers || [];
-  let list = state.servers;
+  // 在线优先，其次待安装，最后离线；同组按名称
+  let list = [...state.servers].sort((a, b) => {
+    const rank = (s) => (s.online ? 0 : s.status === "pending" ? 1 : 2);
+    const d = rank(a) - rank(b);
+    if (d !== 0) return d;
+    return String(a.name || "").localeCompare(String(b.name || ""), "zh");
+  });
   if (state.srvFilter === "online") list = list.filter((s) => s.online);
   if (state.srvFilter === "offline") list = list.filter((s) => !s.online && s.status !== "pending");
   const box = $("#server-list");
   box.innerHTML = list.map((s) => {
     const chip = s.online ? "on" : s.status === "pending" ? "pending" : "off";
     const label = s.online ? "在线" : s.status === "pending" ? "待安装" : "离线";
+    const xray = s.xray_running ? "运行中" : "未运行";
     return `<div class="server-card">
       <div class="title">
         <strong><span class="dot ${chip}"></span>${escapeHtml(s.name)}</strong>
-        <span class="chip ${chip}">${label} · ${escapeHtml(s.conn_mode || "http")}</span>
+        <span class="chip ${chip}">${label}</span>
       </div>
-      <div class="meta">${escapeHtml(s.hostname || "-")} · ${escapeHtml(s.domain || s.public_ip || "no-ip")}</div>
-      <div class="meta badge-speed">↑${fmtBytes(s.traffic_up)} ↓${fmtBytes(s.traffic_down)} · 实时 ${fmtSpeed(s.speed_up)} / ${fmtSpeed(s.speed_down)}</div>
-      <div class="meta">xray:${s.xray_running ? "on" : "off"} · cfg v${s.config_version} ${s.tags ? "· " + escapeHtml(s.tags) : ""}</div>
-      ${s.agent_error ? `<div class="meta" style="color:var(--danger)">错误: ${escapeHtml(s.agent_error).slice(0,180)}</div>` : ""}
+      <div class="meta">${escapeHtml(s.hostname || "主机名未知")} · ${escapeHtml(s.domain || s.public_ip || "未上报 IP")}</div>
+      <div class="meta badge-speed">↑ ${fmtBytes(s.traffic_up)} · ↓ ${fmtBytes(s.traffic_down)} · 实时 ${fmtSpeed(s.speed_up)} / ${fmtSpeed(s.speed_down)}</div>
+      <div class="meta">Xray ${xray} · 配置 v${s.config_version}${s.tags ? " · " + escapeHtml(s.tags) : ""}</div>
+      ${s.agent_error ? `<div class="meta err-line">异常：${escapeHtml(s.agent_error).slice(0, 200)}</div>` : ""}
       <div class="row" style="margin:0">
         <button class="small" data-act="install" data-id="${s.id}">安装命令</button>
-        <button class="small" data-act="bump" data-id="${s.id}">下发配置</button>
+        <button class="small primary" data-act="bump" data-id="${s.id}">下发配置</button>
         <button class="small danger" data-act="del" data-id="${s.id}">删除</button>
       </div>
     </div>`;
-  }).join("") || `<div class="empty-state"><h3>还没有服务器</h3><p>添加一台并安装 Agent 即可下发节点</p></div>`;
+  }).join("") || `<div class="empty-state"><h3>尚未接入服务器</h3><p>添加一台机器并安装 Agent 后，即可下发节点配置</p></div>`;
   box.onclick = async (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
     const id = btn.dataset.id;
     if (btn.dataset.act === "del") {
-      if (!(await uiConfirm("删除后 Agent 将无法再连接，确定删除该服务器？", "删除服务器"))) return;
+      if (!(await uiConfirm("删除后该机器上的 Agent 将无法再连接，确定继续？", "删除服务器"))) return;
       await api("/api/servers/" + id, { method: "DELETE" });
-      toast("已删除服务器", "ok");
+      toast("服务器已删除", "ok");
       await refreshServers();
     }
     if (btn.dataset.act === "bump") {
       await api("/api/servers/" + id + "/bump-config", { method: "POST", body: "{}" });
-      toast("已触发配置下发", "ok");
+      toast("已通知 Agent 拉取最新配置", "ok");
       await refreshServers();
     }
     if (btn.dataset.act === "install") {
       const info = await api("/api/servers/" + id + "/install-cmd");
-      $("#modal-title").textContent = "安装 " + (info.name || "");
+      $("#modal-title").textContent = "安装 Agent · " + (info.name || "");
       $("#install-cmd").textContent =
-        "# Linux 一键\n" + (info.one_click_cmd || info.install_cmd || "") +
+        "# Linux 一键安装\n" + (info.one_click_cmd || info.install_cmd || "") +
         "\n\n# Docker\n" + info.docker_cmd +
-        "\n\n# Binary\n" + info.binary_cmd;
+        "\n\n# 二进制\n" + info.binary_cmd;
       $("#modal").classList.remove("hidden");
     }
   };
@@ -933,7 +940,7 @@ function resetInboundForm() {
   $("#in-settings-json").value = "";
   $("#in-stream-json").value = "";
   if ($("#in-use-json")) $("#in-use-json").checked = false;
-  $("#in-editor-hint").textContent = "先选模板，再按需微调。各分区可折叠。";
+  $("#in-editor-hint").textContent = "选择模板后按需微调，展开分区可编辑更多选项。";
   $$("#in-editor details.fold").forEach((d, i) => {
     d.open = i < 3;
   });
@@ -941,7 +948,7 @@ function resetInboundForm() {
 
 function fillInboundForm(inb) {
   $("#in-id").value = inb.id || "";
-  $("#in-editor-title").textContent = inb.id ? `编辑节点 #${inb.id}` : "新建节点";
+  $("#in-editor-title").textContent = inb.id ? `编辑节点 · ${inb.share_name || inb.tag || "#" + inb.id}` : "新建节点";
   if (inb.server_id) $("#in-server").value = inb.server_id;
   $("#in-proto").value = inb.protocol || "vless";
   setTplValue("#in-port-tpl", "#wrap-in-port", "#in-port", String(inb.port || 443));
@@ -1006,7 +1013,7 @@ function fillInboundForm(inb) {
   $("#in-stream-json").value = JSON.stringify(stream, null, 2);
   if ($("#in-use-json")) $("#in-use-json").checked = false;
   if ($("#in-template")) $("#in-template").value = "custom";
-  $("#in-editor-hint").textContent = "正在编辑。改模板/下拉即可；密钥区默认折叠。完全自定义请开「高级 JSON」。";
+  $("#in-editor-hint").textContent = "正在编辑已有节点。密钥默认折叠；需要完整自定义时请使用高级 JSON。";
   $$("#in-editor details.fold").forEach((d, i) => {
     d.open = i < 3;
   });
@@ -1115,23 +1122,26 @@ function matchInboundFilter(inb, stream) {
 }
 
 function renderInboundList() {
-  const all = state.inboundsCache || [];
+  const all = [...(state.inboundsCache || [])].sort((a, b) => (b.id || 0) - (a.id || 0));
   const list = all.filter((inb) => {
     let stream = {};
     try { stream = JSON.parse(inb.stream_json || "{}"); } catch { /* */ }
     return matchInboundFilter(inb, stream);
   });
-  if ($("#in-count")) $("#in-count").textContent = `共 ${list.length} / ${all.length}`;
+  if ($("#in-count")) $("#in-count").textContent = list.length === all.length
+    ? `共 ${list.length} 个`
+    : `显示 ${list.length} / ${all.length}`;
   const box = $("#inbound-list");
   if (!box) return;
   if (!list.length) {
-    box.innerHTML = `<div class="empty-state"><h3>${all.length ? "没有匹配的节点" : "还没有节点"}</h3>
-      <p>${all.length ? "试试清空搜索或筛选" : "用快捷模板或「新建节点」创建"}</p>
-      ${!all.length ? '<button type="button" class="primary" id="btn-empty-new">+ 新建节点</button>' : ""}</div>`;
+    box.innerHTML = `<div class="empty-state"><h3>${all.length ? "没有符合条件的节点" : "还没有入站节点"}</h3>
+      <p>${all.length ? "试试清空搜索或筛选条件" : "使用上方模板，或点击「新建节点」开始"}</p>
+      ${!all.length ? '<button type="button" class="primary" id="btn-empty-new">新建节点</button>' : ""}</div>`;
     const bn = $("#btn-empty-new");
     if (bn) bn.onclick = () => { resetInboundForm(); openNodeDrawer(); };
     return;
   }
+  const secLabel = (s) => ({ none: "无加密", tls: "TLS", reality: "Reality" }[s] || s);
   box.innerHTML = list.map((inb) => {
     let stream = {};
     try { stream = JSON.parse(inb.stream_json || "{}"); } catch { /* */ }
@@ -1144,16 +1154,16 @@ function renderInboundList() {
         <div class="item-title">
           <strong>${escapeHtml(inb.share_name || inb.tag)}</strong>
           <span class="chip">${escapeHtml(inb.protocol)}</span>
-          <span class="chip">${escapeHtml(net)}/${escapeHtml(sec)}</span>
-          <span class="chip">:${inb.port}</span>
-          ${en ? '<span class="chip on">启用</span>' : '<span class="chip off">禁用</span>'}
+          <span class="chip">${escapeHtml(net)} · ${escapeHtml(secLabel(sec))}</span>
+          <span class="chip">端口 ${inb.port}</span>
+          ${en ? '<span class="chip on">已启用</span>' : '<span class="chip off">已禁用</span>'}
         </div>
-        <div class="meta">tag ${escapeHtml(inb.tag)} · x${inb.multiplier || 1}${inb.remark ? " · " + escapeHtml(inb.remark) : ""}</div>
+        <div class="meta">标识 ${escapeHtml(inb.tag)} · 倍率 ×${inb.multiplier || 1}${inb.remark ? " · " + escapeHtml(inb.remark) : ""}</div>
       </div>
       <div class="item-actions row">
         <button class="small" data-act="edit" data-id="${inb.id}">编辑</button>
         <button class="small" data-act="qr" data-id="${inb.id}" ${link ? "" : "disabled"} title="二维码">二维码</button>
-        <button class="small" data-act="copy" data-id="${inb.id}" ${link ? "" : "disabled"}>复制链接</button>
+        <button class="small" data-act="copy" data-id="${inb.id}" ${link ? "" : "disabled"}>复制</button>
         <button class="small" data-act="clone" data-id="${inb.id}">克隆</button>
         <button class="small" data-act="toggle" data-id="${inb.id}" data-en="${en ? 0 : 1}">${en ? "禁用" : "启用"}</button>
         <button class="small danger" data-act="del" data-id="${inb.id}">删除</button>
@@ -1436,7 +1446,7 @@ async function refreshOutbounds() {
     <div class="row" style="margin:0">
       <button class="small" data-act="toggle" data-id="${o.id}" data-en="${o.enabled ? 0 : 1}">${o.enabled ? "禁用" : "启用"}</button>
       <button class="small danger" data-act="del" data-id="${o.id}">删除</button>
-    </div></div>`).join("") || '<p class="muted">暂无出站</p>';
+    </div></div>`).join("") || '<div class="empty-state"><h3>暂无出站</h3><p>可添加 freedom / WARP 等出口</p></div>';
   $("#ob-list").onclick = async (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
@@ -1482,7 +1492,7 @@ async function refreshRoutes() {
   $("#rt-list").innerHTML = (data.routes || []).map((r) => `
     <div class="item"><div><strong>${escapeHtml(r.name)}</strong> → ${escapeHtml(r.outbound_tag)}
     <div class="meta">${escapeHtml(r.domain_json)}</div></div>
-    <button class="small danger" data-id="${r.id}">删除</button></div>`).join("") || '<p class="muted">暂无路由</p>';
+    <button class="small danger" data-id="${r.id}">删除</button></div>`).join("") || '<div class="empty-state"><h3>暂无路由规则</h3><p>按域名或 IP 分流到指定出口</p></div>';
   $("#rt-list").onclick = async (e) => {
     const btn = e.target.closest("button[data-id]");
     if (!btn) return;
@@ -1781,7 +1791,7 @@ async function refreshLinks() {
     <div class="item-actions row">
       <button class="small" data-qr-idx="${i}" ${l.link ? "" : "disabled"}>二维码</button>
       <button class="small" data-copy-idx="${i}">复制</button>
-    </div></div>`).join("") || '<p class="muted">暂无</p>';
+    </div></div>`).join("") || '<div class="empty-state"><h3>暂无分享链接</h3><p>创建并启用入站节点后，这里会自动列出</p></div>';
   $("#links-list").onclick = async (e) => {
     const qbtn = e.target.closest("button[data-qr-idx]");
     if (qbtn) {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#fffaf7" />
-  <title>BPanel · 多机 Xray 面板</title>
+  <title>BPanel · 多机节点面板</title>
   <link rel="stylesheet" href="/static/style.css" />
   <script>
     /* 防闪：与妙妙屋一致 light / dark / system */
@@ -21,15 +21,15 @@
     <section id="view-auth" class="auth-wrap hidden">
       <div class="auth-card">
         <h1>BPanel</h1>
-        <p class="muted" id="auth-hint">多服务器 Xray 管理 · 订阅拼车</p>
+        <p class="muted" id="auth-hint">优雅管理多机节点与订阅</p>
         <div class="tabs-mini" id="auth-tabs">
           <button type="button" class="active" data-mode="login">登录</button>
           <button type="button" data-mode="register">邀请注册</button>
         </div>
-        <label>用户名 <input id="username" autocomplete="username" /></label>
-        <label>密码 <input id="password" type="password" autocomplete="current-password" /></label>
-        <label id="invite-wrap" class="hidden">邀请码 <input id="invite-code" placeholder="可选/注册必填" /></label>
-        <button id="auth-btn" class="primary block">继续</button>
+        <label>用户名 <input id="username" autocomplete="username" placeholder="管理员或成员账号" /></label>
+        <label>密码 <input id="password" type="password" autocomplete="current-password" placeholder="请输入密码" /></label>
+        <label id="invite-wrap" class="hidden">邀请码 <input id="invite-code" placeholder="注册时填写邀请码" /></label>
+        <button id="auth-btn" class="primary block">进入面板</button>
         <p id="auth-err" class="error"></p>
       </div>
     </section>
@@ -44,32 +44,37 @@
         <nav id="nav">
           <div class="nav-group">总览</div>
           <button data-tab="dash" class="nav active"><span class="nav-ico">▣</span>仪表盘</button>
-          <div class="nav-group">代理</div>
+
+          <div class="nav-group">节点</div>
           <button data-tab="servers" class="nav"><span class="nav-ico">⬡</span>服务器</button>
           <button data-tab="inbounds" class="nav"><span class="nav-ico">◎</span>入站节点</button>
-          <button data-tab="outbounds" class="nav"><span class="nav-ico">⇢</span>出站路由</button>
+          <button data-tab="links" class="nav"><span class="nav-ico">◈</span>分享链接</button>
+          <button data-tab="nodes" class="nav"><span class="nav-ico">◇</span>外部节点</button>
+
+          <div class="nav-group">网络</div>
+          <button data-tab="certs" class="nav"><span class="nav-ico">⚿</span>证书</button>
+          <button data-tab="outbounds" class="nav"><span class="nav-ico">⇢</span>出站与路由</button>
           <button data-tab="tunnels" class="nav"><span class="nav-ico">⇄</span>中转隧道</button>
-          <button data-tab="links" class="nav"><span class="nav-ico">🔗</span>URI 分享</button>
-          <button data-tab="nodes" class="nav"><span class="nav-ico">＋</span>外部节点</button>
+          <button data-tab="nginx" class="nav"><span class="nav-ico">{ }</span>Nginx</button>
+
           <div class="nav-group">用户</div>
           <button data-tab="plans" class="nav"><span class="nav-ico">▤</span>套餐</button>
-          <button data-tab="users" class="nav"><span class="nav-ico">☺</span>用户续费</button>
+          <button data-tab="users" class="nav"><span class="nav-ico">☺</span>成员</button>
           <button data-tab="invites" class="nav"><span class="nav-ico">＃</span>邀请码</button>
           <button data-tab="sub" class="nav"><span class="nav-ico">⌁</span>我的订阅</button>
-          <div class="nav-group">运维</div>
-          <button data-tab="certs" class="nav"><span class="nav-ico">⚿</span>证书 ACME</button>
-          <button data-tab="nginx" class="nav"><span class="nav-ico">{ }</span>Nginx</button>
-          <button data-tab="traffic" class="nav"><span class="nav-ico">◔</span>流量</button>
-          <button data-tab="speed" class="nav"><span class="nav-ico">⚡</span>测速</button>
-          <button data-tab="settings" class="nav"><span class="nav-ico">⚙</span>系统设置</button>
+
+          <div class="nav-group">系统</div>
+          <button data-tab="traffic" class="nav"><span class="nav-ico">◔</span>流量统计</button>
+          <button data-tab="speed" class="nav"><span class="nav-ico">⚡</span>连通测速</button>
+          <button data-tab="settings" class="nav"><span class="nav-ico">⚙</span>设置</button>
         </nav>
         <div class="side-foot">
           <div id="nav-user" class="muted user-pill"></div>
-          <button type="button" class="theme-cycle" id="theme-cycle" title="切换主题" aria-label="切换主题">
+          <button type="button" class="theme-cycle" id="theme-cycle" title="切换外观" aria-label="切换外观">
             <span class="theme-ico" id="theme-ico">◐</span>
             <span id="theme-label">跟随系统</span>
           </button>
-          <button id="btn-logout" class="ghost">退出登录</button>
+          <button id="btn-logout" class="ghost">安全退出</button>
         </div>
       </aside>
 
@@ -81,20 +86,20 @@
           <p class="sub" id="page-sub">总览在线节点、流量与趋势</p>
         </div>
         <div class="topbar-actions">
-          <button type="button" class="small ghost" id="btn-global-refresh" title="刷新当前页">↻ 刷新</button>
+          <button type="button" class="small ghost" id="btn-global-refresh" title="刷新当前页">刷新</button>
         </div>
       </header>
       <main class="main">
         <section id="tab-dash" class="tab">
           <div class="quick-actions" id="dash-quick">
-            <button type="button" class="qa-card" data-go="servers"><span>⬡</span><b>添加服务器</b><small>安装 Agent</small></button>
-            <button type="button" class="qa-card" data-go="inbounds"><span>◎</span><b>创建节点</b><small>模板一键</small></button>
-            <button type="button" class="qa-card" data-go="certs"><span>⚿</span><b>申请证书</b><small>ACME</small></button>
-            <button type="button" class="qa-card" data-go="settings" data-upd="1"><span>↻</span><b>检查更新</b><small>一键升级主控</small></button>
+            <button type="button" class="qa-card" data-go="servers"><span>⬡</span><b>接入服务器</b><small>部署 Agent</small></button>
+            <button type="button" class="qa-card" data-go="inbounds"><span>◎</span><b>新建节点</b><small>模板快速创建</small></button>
+            <button type="button" class="qa-card" data-go="certs"><span>⚿</span><b>申请证书</b><small>Let's Encrypt</small></button>
+            <button type="button" class="qa-card" data-go="settings" data-upd="1"><span>↻</span><b>检查更新</b><small>升级主控版本</small></button>
           </div>
           <div class="page-head">
-            <div><h2>运行概览</h2><div class="sub">实时状态与近 14 日流量</div></div>
-            <button class="small" id="btn-refresh-dash">刷新数据</button>
+            <div><h2>运行概览</h2><div class="sub">机器状态、节点数量与近两周流量</div></div>
+            <button class="small" id="btn-refresh-dash">刷新</button>
           </div>
           <div class="stats" id="dash-stats"></div>
           <div class="card" style="margin-top:1rem">
@@ -105,7 +110,7 @@
 
         <section id="tab-servers" class="tab hidden">
           <div class="page-head">
-            <div><h2>服务器</h2><div class="sub">主控 · Agent · 一键部署</div></div>
+            <div><h2>服务器</h2><div class="sub">接入机器、安装 Agent、下发配置</div></div>
             <div class="seg" id="srv-filter">
               <button type="button" class="active" data-f="all">全部</button>
               <button type="button" data-f="online">在线</button>
@@ -113,8 +118,8 @@
             </div>
           </div>
           <div class="toolbar">
-            <input id="server-name" placeholder="节点名称 jp-1" style="max-width:200px" />
-            <input id="server-domain" placeholder="域名(可选)" style="max-width:180px" />
+            <input id="server-name" placeholder="名称，如 tokyo-1" style="max-width:200px" />
+            <input id="server-domain" placeholder="域名（可选）" style="max-width:180px" />
             <button id="btn-add-server" class="primary">添加服务器</button>
           </div>
           <div id="server-list" class="grid-cards"></div>
@@ -122,50 +127,51 @@
 
         <section id="tab-inbounds" class="tab hidden">
           <div class="page-head">
-            <div><h2>入站节点</h2><div class="sub">3x-ui 风格列表 · 模板快速创建 · 侧滑编辑</div></div>
+            <div><h2>入站节点</h2><div class="sub">模板创建 · 侧滑编辑 · 二维码分享</div></div>
             <div class="row" style="margin:0">
-              <button type="button" id="btn-in-new" class="primary">＋ 新建节点</button>
+              <button type="button" id="btn-in-new" class="primary">新建节点</button>
               <button type="button" id="btn-reality" class="ghost">一键 Reality</button>
             </div>
           </div>
 
           <div class="tpl-chips" id="in-quick-tpl">
-            <span class="muted" style="margin-right:.35rem">快捷模板</span>
-            <button type="button" class="chip-btn" data-tpl="vless-reality">Reality Vision</button>
-            <button type="button" class="chip-btn" data-tpl="vless-ws-tls">VLESS WS+TLS</button>
-            <button type="button" class="chip-btn" data-tpl="vless-grpc-tls">VLESS gRPC</button>
-            <button type="button" class="chip-btn" data-tpl="vmess-ws-tls">VMess WS</button>
-            <button type="button" class="chip-btn" data-tpl="trojan-tcp-tls">Trojan TLS</button>
+            <span class="muted chip-label">推荐</span>
+            <button type="button" class="chip-btn" data-tpl="vless-reality">VLESS Reality</button>
+            <button type="button" class="chip-btn" data-tpl="vless-ws-tls">VLESS · WS+TLS</button>
+            <button type="button" class="chip-btn" data-tpl="trojan-tcp-tls">Trojan · TLS</button>
             <button type="button" class="chip-btn" data-tpl="ss-tcp">Shadowsocks</button>
-            <button type="button" class="chip-btn" data-tpl="anytls-tls">AnyTLS</button>
+            <span class="muted chip-label">更多</span>
+            <button type="button" class="chip-btn" data-tpl="vless-grpc-tls">VLESS · gRPC</button>
+            <button type="button" class="chip-btn" data-tpl="vmess-ws-tls">VMess · WS</button>
             <button type="button" class="chip-btn" data-tpl="hysteria2-tls">Hysteria2</button>
             <button type="button" class="chip-btn" data-tpl="socks-auth">SOCKS5</button>
             <button type="button" class="chip-btn" data-tpl="http-auth">HTTP</button>
             <button type="button" class="chip-btn" data-tpl="mixed-auth">Mixed</button>
             <button type="button" class="chip-btn" data-tpl="wireguard">WireGuard</button>
+            <button type="button" class="chip-btn" data-tpl="anytls-tls">AnyTLS</button>
           </div>
 
           <div class="toolbar list-toolbar">
-            <input id="in-search" placeholder="搜索名称 / 协议 / 端口 / 备注…" style="flex:1;min-width:160px" />
+            <input id="in-search" placeholder="搜索名称、协议、端口或备注" style="flex:1;min-width:160px" />
             <select id="in-filter-proto" style="width:auto;min-width:140px">
               <option value="">全部协议</option>
-              <option value="vless">vless</option>
-              <option value="vmess">vmess</option>
-              <option value="trojan">trojan</option>
-              <option value="shadowsocks">shadowsocks</option>
-              <option value="anytls">anytls</option>
-              <option value="hysteria">hysteria</option>
-              <option value="socks">socks</option>
-              <option value="http">http</option>
-              <option value="mixed">mixed</option>
-              <option value="wireguard">wireguard</option>
-              <option value="dokodemo-door">dokodemo</option>
+              <option value="vless">VLESS</option>
+              <option value="vmess">VMess</option>
+              <option value="trojan">Trojan</option>
+              <option value="shadowsocks">Shadowsocks</option>
+              <option value="hysteria">Hysteria</option>
+              <option value="socks">SOCKS</option>
+              <option value="http">HTTP</option>
+              <option value="mixed">Mixed</option>
+              <option value="wireguard">WireGuard</option>
+              <option value="anytls">AnyTLS</option>
+              <option value="dokodemo-door">Dokodemo</option>
             </select>
             <select id="in-filter-sec" style="width:auto;min-width:120px">
-              <option value="">全部安全</option>
-              <option value="reality">reality</option>
-              <option value="tls">tls</option>
-              <option value="none">none</option>
+              <option value="">全部加密</option>
+              <option value="reality">Reality</option>
+              <option value="tls">TLS</option>
+              <option value="none">无加密</option>
             </select>
             <span class="muted" id="in-count"></span>
           </div>
@@ -179,9 +185,9 @@
             <div class="editor-head" id="in-editor-head">
               <div>
                 <h3 id="in-editor-title" style="margin:0">新建节点</h3>
-                <div class="muted" id="in-editor-hint" style="margin-top:.25rem">先选模板，再按需微调。各分区可折叠。</div>
+                <div class="muted" id="in-editor-hint" style="margin-top:.25rem">选择模板后按需微调，分区可折叠展开。</div>
               </div>
-              <button type="button" class="small ghost" id="btn-in-close" title="关闭">✕ 关闭</button>
+              <button type="button" class="small ghost" id="btn-in-close" title="关闭">关闭</button>
             </div>
 
             <div class="editor-body" id="in-editor-body">
@@ -489,9 +495,9 @@
 
               <div class="row editor-actions">
                 <button type="button" id="btn-in-save" class="primary">保存并下发</button>
-                <button type="button" id="btn-in-reset" class="ghost">重置</button>
-                <button type="button" id="btn-in-fold-all" class="ghost">全部折叠</button>
-                <button type="button" id="btn-in-expand-all" class="ghost">全部展开</button>
+                <button type="button" id="btn-in-reset" class="ghost">重置表单</button>
+                <button type="button" id="btn-in-fold-all" class="ghost">收起分区</button>
+                <button type="button" id="btn-in-expand-all" class="ghost">展开分区</button>
               </div>
             </div>
             </div>
@@ -499,7 +505,7 @@
         </section>
 
         <section id="tab-outbounds" class="tab hidden">
-          <div class="page-head"><div><h2>出站 / 路由</h2><div class="sub">WARP、分流规则</div></div></div>
+          <div class="page-head"><div><h2>出站与路由</h2><div class="sub">WARP 出口与分流规则</div></div></div>
           <div class="grid2">
             <div class="card">
               <h3>出站</h3>
@@ -533,7 +539,7 @@
         </section>
 
         <section id="tab-tunnels" class="tab hidden">
-          <div class="page-head"><div><h2>中转 / 端口转发</h2><div class="sub">dokodemo-door 链式转发</div></div></div>
+          <div class="page-head"><div><h2>中转隧道</h2><div class="sub">端口转发与链式中转</div></div></div>
           <div class="card">
             <div class="row wrap">
               <select id="tn-server"></select>
@@ -548,7 +554,7 @@
         </section>
 
         <section id="tab-plans" class="tab hidden">
-          <div class="page-head"><div><h2>套餐</h2></div></div>
+          <div class="page-head"><div><h2>套餐</h2><div class="sub">流量额度与有效期</div></div></div>
           <div class="row wrap">
             <input id="plan-name" placeholder="名称" />
             <input id="plan-traffic" type="number" placeholder="流量字节 0=无限" />
@@ -560,7 +566,7 @@
         </section>
 
         <section id="tab-users" class="tab hidden">
-          <div class="page-head"><div><h2>用户 / 续费</h2><div class="sub">套餐绑定 · 续期 · 重置流量</div></div></div>
+          <div class="page-head"><div><h2>成员</h2><div class="sub">账号、套餐绑定与续期</div></div></div>
           <div class="row wrap">
             <input id="u-name" placeholder="用户名" />
             <input id="u-pass" type="password" placeholder="密码" />
@@ -572,7 +578,7 @@
         </section>
 
         <section id="tab-invites" class="tab hidden">
-          <div class="page-head"><div><h2>邀请码</h2><div class="sub">注册自动绑定套餐</div></div></div>
+          <div class="page-head"><div><h2>邀请码</h2><div class="sub">邀请注册并自动绑定套餐</div></div></div>
           <div class="row wrap">
             <select id="inv-plan"></select>
             <input id="inv-max" type="number" value="1" style="width:80px" title="可用次数" />
@@ -584,14 +590,14 @@
         </section>
 
         <section id="tab-nodes" class="tab hidden">
-          <div class="page-head"><div><h2>外部节点</h2></div></div>
-          <textarea id="ext-links" rows="5" placeholder="每行一个分享链接 vless/vmess/trojan"></textarea>
-          <button id="btn-import" class="primary">导入</button>
+          <div class="page-head"><div><h2>外部节点</h2><div class="sub">导入其它面板的分享链接</div></div></div>
+          <textarea id="ext-links" rows="5" placeholder="每行一条分享链接（vless / vmess / trojan / ss …）"></textarea>
+          <button id="btn-import" class="primary">导入链接</button>
           <div id="ext-list" class="list"></div>
         </section>
 
         <section id="tab-certs" class="tab hidden">
-          <div class="page-head"><div><h2>证书 / ACME</h2></div></div>
+          <div class="page-head"><div><h2>证书</h2><div class="sub">申请、上传并下发到 Agent</div></div></div>
           <div class="card">
             <h3>Let's Encrypt 申请</h3>
             <div class="row wrap">
@@ -625,7 +631,7 @@
         </section>
 
         <section id="tab-nginx" class="tab hidden">
-          <div class="page-head"><div><h2>Nginx 配置</h2><div class="sub">按服务器编辑草稿并随配置版本下发意图</div></div></div>
+          <div class="page-head"><div><h2>Nginx</h2><div class="sub">按服务器维护配置草稿并随版本下发</div></div></div>
           <div class="row">
             <select id="ngx-server"></select>
             <button id="btn-load-ngx">加载</button>
@@ -635,13 +641,13 @@
         </section>
 
         <section id="tab-traffic" class="tab hidden">
-          <div class="page-head"><div><h2>流量</h2></div></div>
+          <div class="page-head"><div><h2>流量统计</h2><div class="sub">用量汇总与每日明细</div></div></div>
           <div id="traffic-box" class="card mono"></div>
           <div id="traffic-daily" class="list"></div>
         </section>
 
         <section id="tab-speed" class="tab hidden">
-          <div class="page-head"><div><h2>测速</h2><div class="sub">主控侧 TCP/TLS 连通性探测</div></div></div>
+          <div class="page-head"><div><h2>连通测速</h2><div class="sub">从主控探测 TCP / TLS 可达性</div></div></div>
           <div class="row wrap">
             <input id="st-host" placeholder="host" />
             <input id="st-port" type="number" placeholder="port" style="width:100px" />
@@ -653,14 +659,15 @@
         </section>
 
         <section id="tab-links" class="tab hidden">
-          <div class="page-head"><div><h2>URI 分享</h2><div class="sub">节点链接一览 · 可复制</div></div>
+          <div class="page-head">
+            <div><h2>分享链接</h2><div class="sub">一键复制或扫码导入客户端</div></div>
             <button id="btn-refresh-links" class="small">刷新</button>
           </div>
           <div id="links-list" class="list"></div>
         </section>
 
         <section id="tab-sub" class="tab hidden">
-          <div class="page-head"><div><h2>我的订阅</h2><div class="sub">一键复制到客户端</div></div></div>
+          <div class="page-head"><div><h2>我的订阅</h2><div class="sub">复制到客户端即可使用</div></div></div>
           <div class="card sub-card">
             <div class="sub-row"><div><div class="muted">通用 / v2rayN</div><div class="mono" id="sub-url"></div></div><button type="button" class="small" data-copy-el="sub-url">复制</button></div>
             <div class="sub-row"><div><div class="muted">Clash Meta</div><div class="mono" id="sub-clash"></div></div><button type="button" class="small" data-copy-el="sub-clash">复制</button></div>
@@ -670,10 +677,10 @@
         </section>
 
         <section id="tab-settings" class="tab hidden">
-          <div class="page-head"><div><h2>系统设置</h2><div class="sub">站点配置 · 一键更新</div></div></div>
+          <div class="page-head"><div><h2>设置</h2><div class="sub">站点、外观与主控更新</div></div></div>
 
           <div class="card" id="update-card">
-            <h3>系统更新</h3>
+            <h3>版本更新</h3>
             <div class="row wrap" style="align-items:center">
               <div>
                 <div class="meta">当前版本 <strong id="upd-current">—</strong></div>
@@ -684,35 +691,35 @@
               <button type="button" class="ghost" id="btn-upd-check">检查更新</button>
               <button type="button" class="primary" id="btn-upd-run" disabled>一键更新</button>
             </div>
-            <p class="muted" id="upd-msg" style="margin:.65rem 0 0">点击「检查更新」从 GitHub Release 获取最新版本。</p>
+            <p class="muted" id="upd-msg" style="margin:.65rem 0 0">从 GitHub Release 获取最新主控，更新后将自动重启服务。</p>
             <pre class="mono hidden" id="upd-notes" style="max-height:160px;overflow:auto;margin-top:.5rem"></pre>
           </div>
 
           <div class="card">
-            <label>站点名称 <input id="set-site" /></label>
-            <label>主题（与妙妙屋一致）
+            <label>站点名称 <input id="set-site" placeholder="BPanel" /></label>
+            <label>外观主题
               <select id="set-theme">
-                <option value="light">浅色 light</option>
-                <option value="dark">深色 dark</option>
-                <option value="system">跟随系统 system</option>
+                <option value="light">浅色</option>
+                <option value="dark">深色</option>
+                <option value="system">跟随系统</option>
               </select>
             </label>
-            <label>伪装探针模式
+            <label>伪装探针
               <select id="set-probe">
                 <option value="off">关闭</option>
                 <option value="blog">开启 /probe 伪装页</option>
               </select>
             </label>
-            <label>ACME 邮箱 <input id="set-acme-email" /></label>
-            <label>Cloudflare Token <input id="set-cf-token" type="password" /></label>
-            <label>DNS Key <input id="set-dns-key" type="password" /></label>
-            <label>DNS Secret <input id="set-dns-secret" type="password" /></label>
-            <label>Webhook URL <input id="set-webhook" /></label>
+            <label>ACME 邮箱 <input id="set-acme-email" placeholder="you@example.com" /></label>
+            <label>Cloudflare Token <input id="set-cf-token" type="password" placeholder="可选" /></label>
+            <label>DNS Key <input id="set-dns-key" type="password" placeholder="可选" /></label>
+            <label>DNS Secret <input id="set-dns-secret" type="password" placeholder="可选" /></label>
+            <label>Webhook URL <input id="set-webhook" placeholder="https://…" /></label>
             <div class="row" style="margin-top:1rem">
-              <button id="btn-save-set" class="primary">保存</button>
+              <button id="btn-save-set" class="primary">保存设置</button>
               <button id="btn-backup">导出备份</button>
             </div>
-            <p class="muted" style="margin-top:1rem">MCP: POST /api/mcp · 默认端口 8080 · Agent mode=auto</p>
+            <p class="muted" style="margin-top:1rem">默认端口 8080 · Agent 模式 auto · MCP：POST /api/mcp</p>
           </div>
         </section>
       </main>
