@@ -159,6 +159,9 @@ func (s *ServerApp) routes() {
 	s.mux.HandleFunc("GET /api/traffic", s.authMiddleware(s.handleTrafficSummary))
 	s.mux.HandleFunc("GET /api/settings", s.authMiddleware(s.handleGetSettings))
 	s.mux.HandleFunc("PUT /api/settings", s.adminOnly(s.handlePutSettings))
+	// self-update (admin)
+	s.mux.HandleFunc("GET /api/system/update/check", s.adminOnly(s.handleUpdateCheck))
+	s.mux.HandleFunc("POST /api/system/update", s.adminOnly(s.handleSelfUpdate))
 
 	// agent protocol
 	s.mux.HandleFunc("POST /api/agent/register", s.handleAgentRegister)

@@ -381,6 +381,7 @@ $$("#dash-quick .qa-card").forEach((b) => {
     const go = b.dataset.go;
     if (go) switchTab(go);
     if (go === "inbounds") setTimeout(() => { resetInboundForm(); openNodeDrawer(); }, 80);
+    if (b.dataset.upd === "1") setTimeout(() => checkUpdate({ quiet: false }).catch(() => {}), 100);
   };
 });
 document.addEventListener("click", (e) => {
@@ -1666,7 +1667,118 @@ async function refreshSettings() {
   $("#set-dns-secret").value = s.dns_api_secret || "";
   $("#set-webhook").value = s.webhook_url || "";
   if (s.acme_email && $("#acme-email") && !$("#acme-email").value) $("#acme-email").value = s.acme_email;
+  // 自动检查更新（不阻塞设置页）
+  checkUpdate({ quiet: true }).catch(() => {});
 }
+
+async function checkUpdate(opts = {}) {
+  const quiet = !!opts.quiet;
+  const curEl = $("#upd-current");
+  const latEl = $("#upd-latest");
+  const badge = $("#upd-badge");
+  const msg = $("#upd-msg");
+  const notes = $("#upd-notes");
+  const btnRun = $("#btn-upd-run");
+  if (curEl && state.meta?.version) curEl.textContent = "v" + state.meta.version;
+  try {
+    if (!quiet && msg) msg.textContent = "正在检查 GitHub Release…";
+    const d = await api("/api/system/update/check");
+    if (curEl) curEl.textContent = "v" + (d.current || state.meta?.version || "?");
+    if (latEl) latEl.textContent = d.latest ? ("v" + d.latest) : "未知";
+    if (badge) {
+      badge.classList.remove("hidden");
+      if (d.update_available) {
+        badge.textContent = "有新版本";
+        badge.className = "chip on";
+      } else if (d.latest) {
+        badge.textContent = "已是最新";
+        badge.className = "chip";
+      } else {
+        badge.textContent = "检查失败";
+        badge.className = "chip off";
+      }
+    }
+    if (btnRun) btnRun.disabled = !d.update_available || !d.download_url;
+    if (msg) {
+      if (d.update_available) {
+        msg.textContent = `发现新版本 v${d.latest}，资源 ${d.asset || ""}。点击「一键更新」下载并重启主控。`;
+      } else if (d.error) {
+        msg.textContent = "检查失败: " + d.error;
+      } else {
+        msg.textContent = `当前已是最新（v${d.current}）。仓库: ${d.repo || ""}`;
+      }
+    }
+    if (notes) {
+      if (d.notes) {
+        notes.classList.remove("hidden");
+        notes.textContent = d.notes;
+      } else {
+        notes.classList.add("hidden");
+        notes.textContent = "";
+      }
+    }
+    state._updateInfo = d;
+    if (!quiet) toast(d.update_available ? "发现新版本 v" + d.latest : "已是最新版本", d.update_available ? "info" : "ok");
+    return d;
+  } catch (e) {
+    if (msg) msg.textContent = "检查失败: " + e.message;
+    if (btnRun) btnRun.disabled = true;
+    if (!quiet) toast(e.message, "err");
+    throw e;
+  }
+}
+
+async function runSelfUpdate() {
+  const info = state._updateInfo;
+  if (!info?.update_available) {
+    toast("没有可更新的版本", "warn");
+    return;
+  }
+  if (!(await uiConfirm(
+    `将主控从 v${info.current} 更新到 v${info.latest}，过程中面板会短暂中断并自动重启。是否继续？`,
+    "一键更新"
+  ))) return;
+  const btn = $("#btn-upd-run");
+  const msg = $("#upd-msg");
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = "更新中…"; }
+    if (msg) msg.textContent = "正在下载并替换二进制，请稍候…";
+    const r = await api("/api/system/update", { method: "POST", body: "{}" });
+    toast(r.message || "更新完成，即将重启", "ok");
+    if (msg) msg.textContent = (r.message || "更新成功") + " 正在等待服务恢复…";
+    // 轮询直到服务恢复
+    let ok = false;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((res) => setTimeout(res, 1500));
+      try {
+        const m = await fetch("/api/meta").then((x) => x.json());
+        if (m.version) {
+          ok = true;
+          state.meta = m;
+          if ($("#ver")) $("#ver").textContent = "v" + m.version;
+          if ($("#upd-current")) $("#upd-current").textContent = "v" + m.version;
+          toast("服务已恢复 · v" + m.version, "ok");
+          if (msg) msg.textContent = "更新完成，当前版本 v" + m.version;
+          break;
+        }
+      } catch { /* still restarting */ }
+    }
+    if (!ok) {
+      toast("服务可能仍在重启，请稍后手动刷新页面", "warn");
+      if (msg) msg.textContent = "若页面长时间无响应，请 SSH 执行: systemctl status bpanel-master";
+    } else {
+      await checkUpdate({ quiet: true });
+    }
+  } catch (e) {
+    toast(e.message, "err");
+    if (msg) msg.textContent = "更新失败: " + e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "一键更新"; }
+  }
+}
+
+$("#btn-upd-check") && ($("#btn-upd-check").onclick = () => checkUpdate({ quiet: false }));
+$("#btn-upd-run") && ($("#btn-upd-run").onclick = () => runSelfUpdate());
 $("#btn-save-set").onclick = async () => {
   let themeMode = $("#set-theme").value || "system";
   if (!THEME_MODES.includes(themeMode)) themeMode = "system";

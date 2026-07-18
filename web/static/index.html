@@ -90,7 +90,7 @@
             <button type="button" class="qa-card" data-go="servers"><span>⬡</span><b>添加服务器</b><small>安装 Agent</small></button>
             <button type="button" class="qa-card" data-go="inbounds"><span>◎</span><b>创建节点</b><small>模板一键</small></button>
             <button type="button" class="qa-card" data-go="certs"><span>⚿</span><b>申请证书</b><small>ACME</small></button>
-            <button type="button" class="qa-card" data-go="sub"><span>⌁</span><b>我的订阅</b><small>复制链接</small></button>
+            <button type="button" class="qa-card" data-go="settings" data-upd="1"><span>↻</span><b>检查更新</b><small>一键升级主控</small></button>
           </div>
           <div class="page-head">
             <div><h2>运行概览</h2><div class="sub">实时状态与近 14 日流量</div></div>
@@ -642,7 +642,24 @@
         </section>
 
         <section id="tab-settings" class="tab hidden">
-          <div class="page-head"><div><h2>系统设置</h2></div></div>
+          <div class="page-head"><div><h2>系统设置</h2><div class="sub">站点配置 · 一键更新</div></div></div>
+
+          <div class="card" id="update-card">
+            <h3>系统更新</h3>
+            <div class="row wrap" style="align-items:center">
+              <div>
+                <div class="meta">当前版本 <strong id="upd-current">—</strong></div>
+                <div class="meta">最新版本 <strong id="upd-latest">—</strong>
+                  <span id="upd-badge" class="chip hidden" style="margin-left:.35rem"></span>
+                </div>
+              </div>
+              <button type="button" class="ghost" id="btn-upd-check">检查更新</button>
+              <button type="button" class="primary" id="btn-upd-run" disabled>一键更新</button>
+            </div>
+            <p class="muted" id="upd-msg" style="margin:.65rem 0 0">点击「检查更新」从 GitHub Release 获取最新版本。</p>
+            <pre class="mono hidden" id="upd-notes" style="max-height:160px;overflow:auto;margin-top:.5rem"></pre>
+          </div>
+
           <div class="card">
             <label>站点名称 <input id="set-site" /></label>
             <label>主题（与妙妙屋一致）
