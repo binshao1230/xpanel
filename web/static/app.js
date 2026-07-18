@@ -196,7 +196,7 @@ function closeNodeDrawer() {
   document.body.style.overflow = "";
 }
 
-// —— 妙妙屋同款主题：light → dark → system 循环 ——
+// —— 妙妙屋同款主题：light / dark / system 三段切换 ——
 const THEME_MODES = ["light", "dark", "system"];
 const THEME_LABELS = {
   light: "浅色模式",
@@ -224,6 +224,28 @@ function showThemeToast(text) {
   showThemeToast._t = setTimeout(() => el.classList.remove("show"), 2600);
 }
 
+function syncThemeControls(modeKey) {
+  document.querySelectorAll(".theme-seg").forEach((seg) => {
+    seg.querySelectorAll("button[data-theme]").forEach((btn) => {
+      const on = btn.dataset.theme === modeKey;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  });
+  const ico = $("#theme-ico");
+  const lab = $("#theme-label");
+  if (ico) ico.textContent = THEME_ICONS[modeKey] || "◐";
+  if (lab) lab.textContent = THEME_LABELS[modeKey] || modeKey;
+  const cycle = $("#theme-cycle");
+  if (cycle) {
+    const label = THEME_LABELS[modeKey] || modeKey;
+    cycle.title = label;
+    cycle.setAttribute("aria-label", label);
+  }
+  const sel = $("#set-theme");
+  if (sel && sel.value !== modeKey) sel.value = modeKey;
+}
+
 function setTheme(mode, opts = {}) {
   const quiet = !!opts.quiet;
   let modeKey = mode || "system";
@@ -236,42 +258,53 @@ function setTheme(mode, opts = {}) {
 
   const applied = resolveTheme(modeKey);
   document.documentElement.classList.toggle("dark", applied === "dark");
+  document.documentElement.dataset.themeMode = modeKey;
   document.documentElement.removeAttribute("data-theme");
 
   const meta = document.querySelector("meta[name='theme-color']");
-  if (meta) meta.setAttribute("content", applied === "dark" ? "#10131c" : "#fffaf7");
+  if (meta) meta.setAttribute("content", applied === "dark" ? "#0c0e16" : "#f7f1ea");
 
   const label = THEME_LABELS[modeKey] || modeKey;
-  const ico = $("#theme-ico");
-  const lab = $("#theme-label");
-  if (ico) ico.textContent = THEME_ICONS[modeKey] || "◐";
-  if (lab) lab.textContent = label;
-  const cycle = $("#theme-cycle");
-  if (cycle) {
-    cycle.title = label;
-    cycle.setAttribute("aria-label", label);
-  }
   const hint = $("#theme-hint");
   if (hint) {
     hint.textContent = modeKey === "system"
       ? `跟随系统 · 当前${applied === "dark" ? "深色" : "浅色"}`
-      : `主题 · ${label}`;
+      : label;
   }
+  syncThemeControls(modeKey);
   if (!quiet) showThemeToast(label);
-
-  const sel = $("#set-theme");
-  if (sel) sel.value = modeKey;
   return modeKey;
 }
 
 function cycleTheme() {
   const cur = localStorage.getItem("bpanel_theme_mode") || "system";
-  // 与妙妙屋 ThemeSwitch 一致：light → dark → system → light
   let next = "light";
   if (cur === "light") next = "dark";
   else if (cur === "dark") next = "system";
   else next = "light";
   setTheme(next);
+}
+
+function bindThemeControls() {
+  if (bindThemeControls._done) return;
+  bindThemeControls._done = true;
+  document.querySelectorAll(".theme-seg").forEach((seg) => {
+    seg.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-theme]");
+      if (!btn || !seg.contains(btn)) return;
+      const mode = btn.dataset.theme;
+      if (THEME_MODES.includes(mode)) setTheme(mode);
+    });
+  });
+  const sel = $("#set-theme");
+  if (sel) {
+    sel.addEventListener("change", () => {
+      const mode = sel.value || "system";
+      if (THEME_MODES.includes(mode)) setTheme(mode);
+    });
+  }
+  const cycle = $("#theme-cycle");
+  if (cycle) cycle.onclick = () => cycleTheme();
 }
 
 function watchSystemTheme() {
@@ -295,6 +328,7 @@ async function boot() {
     else mode = "system";
     localStorage.setItem("bpanel_theme_mode", mode);
   }
+  bindThemeControls();
   setTheme(mode, { quiet: true });
   watchSystemTheme();
 
@@ -402,8 +436,7 @@ $("#auth-btn").onclick = async () => {
 };
 
 $$("#nav .nav").forEach((btn) => { btn.onclick = () => switchTab(btn.dataset.tab); });
-const themeCycleBtn = $("#theme-cycle");
-if (themeCycleBtn) themeCycleBtn.onclick = () => cycleTheme();
+bindThemeControls();
 $("#btn-logout").onclick = () => { localStorage.removeItem("bpanel_token"); location.reload(); };
 $("#modal-close") && ($("#modal-close").onclick = () => $("#modal").classList.add("hidden"));
 $("#modal-close-2") && ($("#modal-close-2").onclick = () => $("#modal").classList.add("hidden"));
@@ -1821,7 +1854,7 @@ async function refreshSettings() {
   $("#set-site").value = s.site_name || "BPanel";
   let themeMode = localStorage.getItem("bpanel_theme_mode") || s.theme || "system";
   if (!THEME_MODES.includes(themeMode)) themeMode = "system";
-  $("#set-theme").value = themeMode;
+  setTheme(themeMode, { quiet: true });
   $("#set-probe").value = s.probe_mode || "off";
   $("#set-acme-email").value = s.acme_email || "";
   $("#set-cf-token").value = s.cf_dns_api_token || "";

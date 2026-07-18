@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#fffaf7" />
+  <meta name="theme-color" content="#f7f1ea" />
   <title>BPanel · 多机节点面板</title>
   <link rel="stylesheet" href="/static/style.css" />
   <script>
@@ -70,10 +70,12 @@
         </nav>
         <div class="side-foot">
           <div id="nav-user" class="muted user-pill"></div>
-          <button type="button" class="theme-cycle" id="theme-cycle" title="切换外观" aria-label="切换外观">
-            <span class="theme-ico" id="theme-ico">◐</span>
-            <span id="theme-label">跟随系统</span>
-          </button>
+          <div class="theme-seg" id="theme-seg" role="group" aria-label="外观主题">
+            <button type="button" data-theme="light" title="浅色"><span class="t-ico">☀</span><span class="t-lab">浅色</span></button>
+            <button type="button" data-theme="dark" title="深色"><span class="t-ico">☾</span><span class="t-lab">深色</span></button>
+            <button type="button" data-theme="system" title="跟随系统" class="active"><span class="t-ico">◐</span><span class="t-lab">系统</span></button>
+          </div>
+          <div class="theme-hint" id="theme-hint">跟随系统</div>
           <button id="btn-logout" class="ghost">安全退出</button>
         </div>
       </aside>
@@ -86,6 +88,11 @@
           <p class="sub" id="page-sub">总览在线节点、流量与趋势</p>
         </div>
         <div class="topbar-actions">
+          <div class="theme-seg compact" id="theme-seg-top" role="group" aria-label="外观主题">
+            <button type="button" data-theme="light" title="浅色"><span class="t-ico">☀</span></button>
+            <button type="button" data-theme="dark" title="深色"><span class="t-ico">☾</span></button>
+            <button type="button" data-theme="system" title="跟随系统" class="active"><span class="t-ico">◐</span></button>
+          </div>
           <button type="button" class="small ghost" id="btn-global-refresh" title="刷新当前页">刷新</button>
         </div>
       </header>
@@ -697,13 +704,19 @@
 
           <div class="card">
             <label>站点名称 <input id="set-site" placeholder="BPanel" /></label>
-            <label>外观主题
-              <select id="set-theme">
+            <div class="settings-theme-row">
+              <span>外观主题</span>
+              <div class="theme-seg" id="theme-seg-set" role="group" aria-label="外观主题">
+                <button type="button" data-theme="light"><span class="t-ico">☀</span><span class="t-lab">浅色</span></button>
+                <button type="button" data-theme="dark"><span class="t-ico">☾</span><span class="t-lab">深色</span></button>
+                <button type="button" data-theme="system" class="active"><span class="t-ico">◐</span><span class="t-lab">系统</span></button>
+              </div>
+              <select id="set-theme" class="hidden" aria-hidden="true" tabindex="-1">
                 <option value="light">浅色</option>
                 <option value="dark">深色</option>
                 <option value="system">跟随系统</option>
               </select>
-            </label>
+            </div>
             <label>伪装探针
               <select id="set-probe">
                 <option value="off">关闭</option>
