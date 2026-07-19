@@ -32,11 +32,14 @@ type HeartbeatRequest struct {
 	ServerID      string          `json:"server_id"`
 	PublicIP      string          `json:"public_ip"`
 	XrayRunning   bool            `json:"xray_running"`
+	XrayVersion   string          `json:"xray_version,omitempty"`
 	ConfigVersion int64           `json:"config_version"`
 	UptimeSec     int64           `json:"uptime_sec"`
 	Traffic       TrafficSnapshot `json:"traffic"`
 	UserTraffic   []UserTraffic   `json:"user_traffic,omitempty"`
 	LastError     string          `json:"last_error,omitempty"`
+	// LogTail is recent Xray/agent log lines for the panel (ring buffer).
+	LogTail []string `json:"log_tail,omitempty"`
 }
 
 type HeartbeatResponse struct {
@@ -71,7 +74,11 @@ type ConfigBundle struct {
 const (
 	HeaderAgentKey  = "X-Agent-Key"
 	CmdReloadConfig = "reload_config"
-	DefaultAPIPort  = 10085
+	CmdRestartXray  = "restart_xray"
+	// CmdInstallXray installs/switches Xray core. Argument is tag like "v26.3.27" or "latest".
+	// Heartbeat/HTTP form: "install_xray:v26.3.27"
+	CmdInstallXray = "install_xray"
+	DefaultAPIPort = 10085
 	// CertPlaceholder must match acme.CertPlaceholder — agent expands to local certs dir.
 	CertPlaceholder = "{{CERTS}}"
 )

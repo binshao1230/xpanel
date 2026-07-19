@@ -38,6 +38,7 @@ type Server struct {
 	ConfigVersion int64  `json:"config_version"`
 	AgentVersion  string `json:"agent_version"`
 	XrayRunning   bool   `json:"xray_running"`
+	XrayVersion   string `json:"xray_version,omitempty"`
 	TrafficUp     int64  `json:"traffic_up"`
 	TrafficDown   int64  `json:"traffic_down"`
 	SpeedUp       int64  `json:"speed_up"`

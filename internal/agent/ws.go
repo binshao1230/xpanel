@@ -68,15 +68,11 @@ func (a *Agent) runWebSocket() error {
 			case protocol.WSTypeCommand:
 				var cmd protocol.WSCommand
 				_ = json.Unmarshal(env.Data, &cmd)
-				if cmd.Name == protocol.CmdReloadConfig || cmd.Name == "reload_config" {
-					log.Printf("ws command: reload_config")
-					if err := a.pullAndApply(); err != nil {
-						log.Printf("ws reload: %v", err)
-					}
+				full := cmd.Name
+				if cmd.Arg != "" {
+					full = cmd.Name + ":" + cmd.Arg
 				}
-				if cmd.Name == "restart_xray" && a.xray != nil {
-					_ = a.xray.Restart()
-				}
+				a.handleCommand(full)
 			case protocol.WSTypeHBResp:
 				var resp protocol.HeartbeatResponse
 				if json.Unmarshal(env.Data, &resp) == nil {
@@ -87,6 +83,9 @@ func (a *Agent) runWebSocket() error {
 						if err := a.pullAndApply(); err != nil {
 							log.Printf("ws hb reload: %v", err)
 						}
+					}
+					for _, c := range resp.Commands {
+						a.handleCommand(c)
 					}
 				}
 			}
@@ -120,8 +119,12 @@ func (a *Agent) runWebSocket() error {
 func (a *Agent) wsHeartbeat(conn *websocket.Conn) error {
 	running := a.xray != nil && a.xray.IsRunning()
 	bin := ""
+	ver := ""
+	var logs []string
 	if a.xray != nil {
 		bin = a.xray.Bin()
+		ver = a.xrayVersion()
+		logs = a.xray.Logs(120)
 	}
 	traf, users := queryXrayStats(bin, protocol.DefaultAPIPort)
 	a.mu.Lock()
@@ -129,11 +132,13 @@ func (a *Agent) wsHeartbeat(conn *websocket.Conn) error {
 		ServerID:      a.serverID,
 		PublicIP:      detectPublicIP(a.client),
 		XrayRunning:   running,
+		XrayVersion:   ver,
 		ConfigVersion: a.configVersion,
 		UptimeSec:     int64(time.Since(a.startedAt).Seconds()),
 		Traffic:       traf,
 		UserTraffic:   users,
 		LastError:     a.lastApplyErr,
+		LogTail:       logs,
 	}
 	a.mu.Unlock()
 	raw, _ := json.Marshal(req)

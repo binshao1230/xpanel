@@ -22,7 +22,8 @@ const (
 
 // Command payload
 type WSCommand struct {
-	Name string `json:"name"` // reload_config, restart_xray
+	Name string `json:"name"` // reload_config, restart_xray, install_xray
+	Arg  string `json:"arg,omitempty"`
 }
 
 // Prefer encoding/json.RawMessage at call sites.

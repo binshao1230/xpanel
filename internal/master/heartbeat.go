@@ -29,9 +29,12 @@ func (s *ServerApp) applyHeartbeat(sid string, req *protocol.HeartbeatRequest) {
 	}
 
 	_, _ = s.db.Exec(
-		`UPDATE servers SET public_ip=?, status='online', last_seen=?, xray_running=?, traffic_up=?, traffic_down=?, speed_up=?, speed_down=?, agent_error=? WHERE id=?`,
-		req.PublicIP, now, xrayRun, req.Traffic.Up, req.Traffic.Down, speedUp, speedDown, req.LastError, sid,
+		`UPDATE servers SET public_ip=?, status='online', last_seen=?, xray_running=?, traffic_up=?, traffic_down=?, speed_up=?, speed_down=?, agent_error=?, xray_version=COALESCE(NULLIF(?,''), xray_version) WHERE id=?`,
+		req.PublicIP, now, xrayRun, req.Traffic.Up, req.Traffic.Down, speedUp, speedDown, req.LastError, req.XrayVersion, sid,
 	)
+	if s.rt != nil && len(req.LogTail) > 0 {
+		s.rt.StoreLogs(sid, req.LogTail)
+	}
 	if prevStatus != "online" {
 		s.notifyServerStatus(sid, true)
 	}

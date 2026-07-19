@@ -812,6 +812,30 @@
     </div>
   </div>
 
+  <div id="log-modal" class="modal hidden">
+    <div class="modal-body modal-log">
+      <div class="modal-head">
+        <div>
+          <h3 id="log-title" style="margin:0">服务器日志</h3>
+          <div class="meta" id="log-sub" style="margin-top:.25rem"></div>
+        </div>
+        <button type="button" class="small ghost" id="log-close">✕</button>
+      </div>
+      <div class="log-toolbar">
+        <label class="log-ver-label">Xray 版本
+          <select id="log-xray-ver" style="min-width:11rem"></select>
+        </label>
+        <input id="log-xray-custom" placeholder="或输入 v26.3.27" style="max-width:9rem" />
+        <button type="button" class="small primary" id="log-xray-install">安装/切换</button>
+        <button type="button" class="small" id="log-xray-restart">重启 Xray</button>
+        <button type="button" class="small" id="log-refresh">刷新日志</button>
+        <button type="button" class="small ghost" id="log-copy">复制</button>
+      </div>
+      <pre id="log-body" class="mono log-body"></pre>
+      <p class="muted" style="margin:.5rem 0 0;font-size:.8rem">日志由 Agent 心跳上报（约每 15 秒）。安装版本需 Agent 在线。</p>
+    </div>
+  </div>
+
   <div id="confirm-modal" class="modal hidden">
     <div class="modal-body modal-sm">
       <h3 id="confirm-title" style="margin:0 0 .5rem">确认操作</h3>

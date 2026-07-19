@@ -206,6 +206,7 @@ CREATE TABLE IF NOT EXISTS user_node_access (
 		`ALTER TABLE certificates ADD COLUMN server_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE inbounds ADD COLUMN cert_id INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE servers ADD COLUMN agent_error TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE servers ADD COLUMN xray_version TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, q := range alters {
 		_, _ = db.Exec(q)

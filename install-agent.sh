@@ -20,6 +20,7 @@ INSTALL_TOKEN=""
 XRAY_BIN="${XRAY_BIN:-xray}"
 AGENT_MODE="${AGENT_MODE:-auto}"
 WITH_XRAY=0
+XRAY_VERSION="${XRAY_VERSION:-latest}"
 
 red() { echo -e "\033[31m$*\033[0m"; }
 green() { echo -e "\033[32m$*\033[0m"; }
@@ -34,6 +35,7 @@ usage() {
   -x, --xray-bin PATH    xray 可执行文件路径（默认 PATH 中的 xray）
   -M, --mode MODE        auto|websocket|http|pull（默认 auto）
       --with-xray        自动下载官方 Xray-core 到 ${INSTALL_DIR}/bin/xray
+      --xray-version VER 指定 Xray 版本（如 v26.3.27 / latest，默认 latest）
   -h, --help             帮助
 EOF
 }
@@ -45,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     -x|--xray-bin) XRAY_BIN="$2"; shift 2 ;;
     -M|--mode) AGENT_MODE="$2"; shift 2 ;;
     --with-xray) WITH_XRAY=1; shift ;;
+    --xray-version) XRAY_VERSION="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) red "未知参数: $1"; usage; exit 1 ;;
   esac
@@ -112,12 +115,21 @@ install_xray() {
     arm64) xarch="arm64-v8a" ;;
     *) red "无法自动下载该架构 xray"; return 1 ;;
   esac
-  # latest release asset name pattern
-  url="$(curl -fsSL https://api.github.com/repos/XTLS/Xray-core/releases/latest \
+  local tag_api
+  if [[ "${XRAY_VERSION}" == "latest" || -z "${XRAY_VERSION}" ]]; then
+    tag_api="https://api.github.com/repos/XTLS/Xray-core/releases/latest"
+    info "安装 Xray 版本: latest"
+  else
+    local ver="${XRAY_VERSION}"
+    [[ "${ver}" != v* ]] && ver="v${ver}"
+    tag_api="https://api.github.com/repos/XTLS/Xray-core/releases/tags/${ver}"
+    info "安装 Xray 版本: ${ver}"
+  fi
+  url="$(curl -fsSL "$tag_api" \
     | sed -n "s/.*\"browser_download_url\"[[:space:]]*:[[:space:]]*\"\\([^\"]*Xray-linux-${xarch}\\.zip\\)\".*/\\1/p" \
     | head -n1)"
   if [[ -z "$url" ]]; then
-    yellow "无法解析 Xray 下载地址，请手动安装 xray"
+    yellow "无法解析 Xray 下载地址（版本 ${XRAY_VERSION}），请手动安装 xray"
     return 1
   fi
   tmp="$(mktemp -d)"

@@ -197,6 +197,9 @@ func (s *ServerApp) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 			if req.ConfigVersion < desired {
 				cmds = append(cmds, protocol.CmdReloadConfig)
 			}
+			if s.rt != nil {
+				cmds = append(cmds, s.rt.TakePending(sid)...)
+			}
 			resp, _ := json.Marshal(map[string]any{
 				"type": protocol.WSTypeHBResp,
 				"data": protocol.HeartbeatResponse{

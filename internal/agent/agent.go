@@ -43,6 +43,8 @@ type Agent struct {
 	startedAt     time.Time
 	stopCh        chan struct{}
 	lastApplyErr  string
+	cachedXrayVer string
+	cachedVerAt   time.Time
 }
 
 func New(cfg Config) *Agent {
@@ -275,9 +277,13 @@ func (a *Agent) register() error {
 func (a *Agent) heartbeat() error {
 	running := false
 	bin := ""
+	ver := ""
+	var logs []string
 	if a.xray != nil {
 		running = a.xray.IsRunning()
 		bin = a.xray.Bin()
+		ver = a.xrayVersion()
+		logs = a.xray.Logs(120)
 	}
 	traf, users := queryXrayStats(bin, protocol.DefaultAPIPort)
 	a.mu.Lock()
@@ -285,11 +291,13 @@ func (a *Agent) heartbeat() error {
 		ServerID:      a.serverID,
 		PublicIP:      detectPublicIP(a.client),
 		XrayRunning:   running,
+		XrayVersion:   ver,
 		ConfigVersion: a.configVersion,
 		UptimeSec:     int64(time.Since(a.startedAt).Seconds()),
 		Traffic:       traf,
 		UserTraffic:   users,
 		LastError:     a.lastApplyErr,
+		LogTail:       logs,
 	}
 	key := a.agentKey
 	a.mu.Unlock()
@@ -303,6 +311,9 @@ func (a *Agent) heartbeat() error {
 		if err := a.pullAndApply(); err != nil {
 			return err
 		}
+	}
+	for _, c := range resp.Commands {
+		a.handleCommand(c)
 	}
 	return nil
 }

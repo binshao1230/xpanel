@@ -37,7 +37,7 @@ func New(bin, configPath string) *Manager {
 	return &Manager{
 		bin:        bin,
 		configPath: configPath,
-		maxLog:     300,
+		maxLog:     500,
 		logLines:   make([]string, 0, 64),
 	}
 }
@@ -151,6 +151,63 @@ func (m *Manager) Logs(n int) []string {
 	out := make([]string, n)
 	copy(out, m.logLines[from:])
 	return out
+}
+
+// Version runs `xray version` and returns a short version string (e.g. "26.3.27").
+func (m *Manager) Version() string {
+	m.mu.Lock()
+	bin := m.bin
+	m.mu.Unlock()
+	if bin == "" || !fileExists(bin) {
+		return ""
+	}
+	cmd := exec.Command(bin, "version")
+	if dir := filepath.Dir(bin); dir != "" && dir != "." {
+		cmd.Dir = dir
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil && len(out) == 0 {
+		return ""
+	}
+	return parseXrayVersion(string(out))
+}
+
+func parseXrayVersion(s string) string {
+	// typical: "Xray 26.3.27 (Xray, Penetrates Everything.) ..."
+	// or "Xray 1.8.24 ..."
+	lines := strings.Split(s, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		low := strings.ToLower(line)
+		if strings.HasPrefix(low, "xray ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				return strings.TrimPrefix(parts[1], "v")
+			}
+		}
+		// fallback: first non-empty line
+		if fields := strings.Fields(line); len(fields) >= 2 {
+			return strings.TrimPrefix(fields[1], "v")
+		}
+		return line
+	}
+	return strings.TrimSpace(s)
+}
+
+// AppendLog injects a synthetic log line (agent events).
+func (m *Manager) AppendLog(line string) {
+	if line == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.logLines = append(m.logLines, line)
+	if len(m.logLines) > m.maxLog {
+		m.logLines = m.logLines[len(m.logLines)-m.maxLog:]
+	}
 }
 
 // ApplyConfigBytes writes config after -test validation, then restarts xray.

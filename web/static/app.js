@@ -793,6 +793,7 @@ async function refreshServers() {
     const chip = s.online ? "on" : s.status === "pending" ? "pending" : "off";
     const label = s.online ? "在线" : s.status === "pending" ? "待安装" : "离线";
     const xray = s.xray_running ? "运行中" : "未运行";
+    const xver = s.xray_version ? (" v" + String(s.xray_version).replace(/^v/, "")) : "";
     return `<div class="server-card">
       <div class="title">
         <strong><span class="dot ${chip}"></span>${escapeHtml(s.name)}</strong>
@@ -800,9 +801,10 @@ async function refreshServers() {
       </div>
       <div class="meta">${escapeHtml(s.hostname || "主机名未知")} · ${escapeHtml(s.domain || s.public_ip || "未上报 IP")}</div>
       <div class="meta badge-speed">↑ ${fmtBytes(s.traffic_up)} · ↓ ${fmtBytes(s.traffic_down)} · 实时 ${fmtSpeed(s.speed_up)} / ${fmtSpeed(s.speed_down)}</div>
-      <div class="meta">Xray ${xray} · 配置 v${s.config_version}${s.tags ? " · " + escapeHtml(s.tags) : ""}</div>
+      <div class="meta">Xray ${xray}${escapeHtml(xver)} · 配置 v${s.config_version}${s.agent_version ? " · Agent v" + escapeHtml(s.agent_version) : ""}${s.tags ? " · " + escapeHtml(s.tags) : ""}</div>
       ${s.agent_error ? `<div class="meta err-line">异常：${escapeHtml(s.agent_error).slice(0, 200)}</div>` : ""}
       <div class="row" style="margin:0">
+        <button class="small" data-act="logs" data-id="${s.id}" data-name="${escapeHtml(s.name)}">日志 / 版本</button>
         <button class="small" data-act="install" data-id="${s.id}">安装命令</button>
         <button class="small primary" data-act="bump" data-id="${s.id}">下发配置</button>
         <button class="small danger" data-act="del" data-id="${s.id}">删除</button>
@@ -824,17 +826,132 @@ async function refreshServers() {
       toast("已通知 Agent 拉取最新配置", "ok");
       await refreshServers();
     }
+    if (btn.dataset.act === "logs") {
+      openServerLogs(id, btn.dataset.name || "");
+    }
     if (btn.dataset.act === "install") {
       const info = await api("/api/servers/" + id + "/install-cmd");
       $("#modal-title").textContent = "安装 Agent · " + (info.name || "");
       $("#install-cmd").textContent =
-        "# Linux 一键安装\n" + (info.one_click_cmd || info.install_cmd || "") +
+        "# Linux 一键安装（含 Xray latest）\n" + (info.one_click_cmd || info.install_cmd || "") +
+        "\n\n# 指定 Xray 版本示例\n" +
+        `curl -sL https://raw.githubusercontent.com/binshao1230/xpanel/main/install-agent.sh | sudo bash -s -- -m ${info.master_url} -t ${info.token} --with-xray --xray-version v26.3.27` +
         "\n\n# Docker\n" + info.docker_cmd +
         "\n\n# 二进制\n" + info.binary_cmd;
       $("#modal").classList.remove("hidden");
     }
   };
 }
+
+// —— 服务器日志 / Xray 版本 ——
+state._logServerId = "";
+state._xrayVersions = null;
+
+async function loadXrayVersionOptions(current) {
+  const sel = $("#log-xray-ver");
+  if (!sel) return;
+  try {
+    if (!state._xrayVersions) {
+      state._xrayVersions = await api("/api/xray/versions");
+    }
+    const d = state._xrayVersions;
+    const latest = d.latest || "latest";
+    const rels = d.releases || [];
+    let html = `<option value="latest">latest（${escapeHtml(latest)}）</option>`;
+    rels.forEach((r) => {
+      const tag = r.tag || "";
+      if (!tag) return;
+      const pre = r.prerelease ? " · pre" : "";
+      html += `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}${pre}</option>`;
+    });
+    sel.innerHTML = html;
+    if (current) {
+      const cur = String(current).startsWith("v") ? current : "v" + current;
+      const opt = [...sel.options].find((o) => o.value === cur || o.value === current);
+      if (opt) sel.value = opt.value;
+      else if (latest) sel.value = "latest";
+    }
+  } catch (e) {
+    sel.innerHTML = `<option value="latest">latest</option>`;
+    toast("拉取 Xray 版本列表失败: " + e.message, "warn");
+  }
+}
+
+async function refreshLogBody() {
+  const id = state._logServerId;
+  if (!id) return;
+  const d = await api("/api/servers/" + id + "/logs?lines=300");
+  const lines = d.lines || [];
+  const body = $("#log-body");
+  if (body) {
+    body.textContent = lines.length ? lines.join("\n") : "（暂无日志 — Agent 上线并运行 Xray 后将自动上报）";
+    body.scrollTop = body.scrollHeight;
+  }
+  if ($("#log-sub")) {
+    const run = d.xray_running ? "运行中" : "未运行";
+    const ver = d.xray_version ? ("v" + String(d.xray_version).replace(/^v/, "")) : "未知";
+    $("#log-sub").textContent = `Xray ${run} · 版本 ${ver} · ${lines.length} 行`;
+  }
+  return d;
+}
+
+async function openServerLogs(id, name) {
+  state._logServerId = id;
+  if ($("#log-title")) $("#log-title").textContent = "日志 · " + (name || id.slice(0, 8));
+  if ($("#log-body")) $("#log-body").textContent = "加载中…";
+  $("#log-modal")?.classList.remove("hidden");
+  try {
+    const d = await refreshLogBody();
+    await loadXrayVersionOptions(d?.xray_version || "");
+  } catch (e) {
+    if ($("#log-body")) $("#log-body").textContent = "加载失败: " + e.message;
+    toast(e.message, "err");
+  }
+}
+
+function closeLogModal() {
+  $("#log-modal")?.classList.add("hidden");
+  state._logServerId = "";
+}
+
+$("#log-close") && ($("#log-close").onclick = closeLogModal);
+$("#log-modal") && ($("#log-modal").onclick = (e) => {
+  if (e.target === $("#log-modal")) closeLogModal();
+});
+$("#log-refresh") && ($("#log-refresh").onclick = () => {
+  refreshLogBody().catch((e) => toast(e.message, "err"));
+});
+$("#log-copy") && ($("#log-copy").onclick = () => {
+  copyText($("#log-body")?.textContent || "").then(() => toast("已复制", "ok", 1200)).catch((e) => toast(e.message, "err"));
+});
+$("#log-xray-restart") && ($("#log-xray-restart").onclick = async () => {
+  const id = state._logServerId;
+  if (!id) return;
+  try {
+    const d = await api("/api/servers/" + id + "/xray/restart", { method: "POST", body: "{}" });
+    toast(d.message || "已通知重启", "ok");
+    setTimeout(() => refreshLogBody().catch(() => {}), 3000);
+  } catch (e) { toast(e.message, "err"); }
+});
+$("#log-xray-install") && ($("#log-xray-install").onclick = async () => {
+  const id = state._logServerId;
+  if (!id) return;
+  const custom = ($("#log-xray-custom")?.value || "").trim();
+  const ver = custom || ($("#log-xray-ver")?.value || "latest");
+  if (!(await uiConfirm(`在此服务器上安装/切换 Xray 到 ${ver}？\n将下载官方二进制并重启进程。`, "安装 Xray"))) return;
+  try {
+    const d = await api("/api/servers/" + id + "/xray/install", {
+      method: "POST",
+      body: JSON.stringify({ version: ver }),
+    });
+    toast(d.message || "已下发安装任务", "ok");
+    if ($("#log-xray-custom")) $("#log-xray-custom").value = "";
+    setTimeout(() => {
+      refreshLogBody().catch(() => {});
+      refreshServers().catch(() => {});
+    }, 5000);
+  } catch (e) { toast(e.message, "err"); }
+});
 $("#btn-add-server").onclick = async () => {
   const name = $("#server-name").value.trim();
   if (!name) return;

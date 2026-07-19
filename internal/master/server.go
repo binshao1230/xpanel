@@ -38,6 +38,7 @@ type ServerApp struct {
 	mux       *http.ServeMux
 	acme      *acme.Manager
 	hub       *Hub
+	rt        *agentRuntime
 }
 
 func New(cfg Config) (*ServerApp, error) {
@@ -70,6 +71,7 @@ func New(cfg Config) (*ServerApp, error) {
 		mux:       http.NewServeMux(),
 		acme:      acmeMgr,
 		hub:       newHub(),
+		rt:        newAgentRuntime(),
 	}
 	s.routes()
 	s.startACMERenewer()
@@ -99,6 +101,10 @@ func (s *ServerApp) routes() {
 	s.mux.HandleFunc("GET /api/servers/{id}/install-cmd", s.adminOnly(s.handleInstallCmd))
 	s.mux.HandleFunc("DELETE /api/servers/{id}", s.adminOnly(s.handleDeleteServer))
 	s.mux.HandleFunc("POST /api/servers/{id}/bump-config", s.adminOnly(s.handleBumpConfig))
+	s.mux.HandleFunc("GET /api/servers/{id}/logs", s.adminOnly(s.handleServerLogs))
+	s.mux.HandleFunc("POST /api/servers/{id}/xray/install", s.adminOnly(s.handleInstallXray))
+	s.mux.HandleFunc("POST /api/servers/{id}/xray/restart", s.adminOnly(s.handleRestartXray))
+	s.mux.HandleFunc("GET /api/xray/versions", s.adminOnly(s.handleXrayVersions))
 
 	// inbounds / free config / quick reality / links
 	// Register literal paths before {id} for clear precedence.
@@ -333,7 +339,7 @@ func (s *ServerApp) handleMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ServerApp) handleListServers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(`SELECT id,name,install_token,hostname,public_ip,status,last_seen,config_version,agent_version,COALESCE(xray_running,0),COALESCE(traffic_up,0),COALESCE(traffic_down,0),COALESCE(conn_mode,'http'),created_at,COALESCE(domain,''),COALESCE(remark,''),COALESCE(tags,''),COALESCE(speed_up,0),COALESCE(speed_down,0),COALESCE(agent_error,'') FROM servers ORDER BY created_at DESC`)
+	rows, err := s.db.Query(`SELECT id,name,install_token,hostname,public_ip,status,last_seen,config_version,agent_version,COALESCE(xray_running,0),COALESCE(traffic_up,0),COALESCE(traffic_down,0),COALESCE(conn_mode,'http'),created_at,COALESCE(domain,''),COALESCE(remark,''),COALESCE(tags,''),COALESCE(speed_up,0),COALESCE(speed_down,0),COALESCE(agent_error,''),COALESCE(xray_version,'') FROM servers ORDER BY created_at DESC`)
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
@@ -344,12 +350,13 @@ func (s *ServerApp) handleListServers(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var srv Server
 		var xrayRun int
-		var domain, remark, tags, agentErr string
+		var domain, remark, tags, agentErr, xrayVer string
 		var speedUp, speedDown int64
-		if err := rows.Scan(&srv.ID, &srv.Name, &srv.InstallToken, &srv.Hostname, &srv.PublicIP, &srv.Status, &srv.LastSeen, &srv.ConfigVersion, &srv.AgentVersion, &xrayRun, &srv.TrafficUp, &srv.TrafficDown, &srv.ConnMode, &srv.CreatedAt, &domain, &remark, &tags, &speedUp, &speedDown, &agentErr); err != nil {
+		if err := rows.Scan(&srv.ID, &srv.Name, &srv.InstallToken, &srv.Hostname, &srv.PublicIP, &srv.Status, &srv.LastSeen, &srv.ConfigVersion, &srv.AgentVersion, &xrayRun, &srv.TrafficUp, &srv.TrafficDown, &srv.ConnMode, &srv.CreatedAt, &domain, &remark, &tags, &speedUp, &speedDown, &agentErr, &xrayVer); err != nil {
 			continue
 		}
 		srv.XrayRunning = xrayRun == 1
+		srv.XrayVersion = xrayVer
 		srv.Domain = domain
 		srv.Remark = remark
 		srv.Tags = tags
@@ -421,7 +428,7 @@ func (s *ServerApp) handleInstallCmd(w http.ResponseWriter, r *http.Request) {
 		base, token,
 	)
 	oneClick := fmt.Sprintf(
-		`curl -sL https://raw.githubusercontent.com/binshao1230/xpanel/main/install-agent.sh | sudo bash -s -- -m %s -t %s --with-xray`,
+		`curl -sL https://raw.githubusercontent.com/binshao1230/xpanel/main/install-agent.sh | sudo bash -s -- -m %s -t %s --with-xray --xray-version latest`,
 		base, token,
 	)
 	bin := fmt.Sprintf(`./bpanel-agent -master %s -token %s -data ./agent-data -mode auto`, base, token)
@@ -640,6 +647,9 @@ func (s *ServerApp) handleAgentHeartbeat(w http.ResponseWriter, r *http.Request)
 	var cmds []string
 	if req.ConfigVersion < desired {
 		cmds = append(cmds, protocol.CmdReloadConfig)
+	}
+	if s.rt != nil {
+		cmds = append(cmds, s.rt.TakePending(sid)...)
 	}
 	writeJSON(w, 200, protocol.HeartbeatResponse{
 		OK:                   true,
