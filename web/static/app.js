@@ -513,47 +513,237 @@ function switchTab(name) {
   if (loaders[name]) loaders[name]().catch((e) => toast(e.message, "err"));
 }
 
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
 function drawChart(series) {
   const c = $("#traffic-chart");
   if (!c) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = c.clientWidth || 1000;
+  const cssH = 200;
+  c.width = Math.floor(cssW * dpr);
+  c.height = Math.floor(cssH * dpr);
   const ctx = c.getContext("2d");
-  const w = c.width, h = c.height;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = cssW;
+  const h = cssH;
   ctx.clearRect(0, 0, w, h);
+
+  const muted = cssVar("--muted-foreground", "#816055");
+  const brand = cssVar("--brand-500", "#d97757");
+  const upColor = "#d97757";
+  const downColor = "#60a5fa";
+
   if (!series?.length) {
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--muted") || "#888";
-    ctx.fillText("暂无数据", 20, h / 2);
+    ctx.fillStyle = muted;
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.fillText("暂无流量数据 — 节点上报后将显示趋势", 16, h / 2);
     return;
   }
-  const max = Math.max(1, ...series.map((x) => (x.up || 0) + (x.down || 0)));
-  const pad = 20;
-  const step = (w - pad * 2) / Math.max(1, series.length - 1);
-  ctx.strokeStyle = "#d97757";
-  ctx.lineWidth = 2;
+
+  const padL = 8, padR = 8, padT = 16, padB = 28;
+  const max = Math.max(1, ...series.map((x) => Math.max(x.up || 0, x.down || 0, (x.up || 0) + (x.down || 0))));
+  const n = series.length;
+  const step = n <= 1 ? 0 : (w - padL - padR) / (n - 1);
+  const yOf = (v) => padT + (1 - v / max) * (h - padT - padB);
+  const xOf = (i) => padL + i * step;
+
+  // grid
+  ctx.strokeStyle = "rgba(137,110,96,0.18)";
+  ctx.lineWidth = 1;
+  for (let g = 0; g <= 3; g++) {
+    const y = padT + ((h - padT - padB) * g) / 3;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(w - padR, y);
+    ctx.stroke();
+  }
+
+  const drawLine = (key, color, dashed) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash(dashed ? [5, 4] : []);
+    ctx.beginPath();
+    series.forEach((p, i) => {
+      const val = key === "total" ? (p.up || 0) + (p.down || 0) : (p[key] || 0);
+      const x = xOf(i);
+      const y = yOf(val);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+  };
+
+  // area for total
   ctx.beginPath();
   series.forEach((p, i) => {
-    const x = pad + i * step;
-    const y = h - pad - ((p.up + p.down) / max) * (h - pad * 2);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    const x = xOf(i);
+    const y = yOf((p.up || 0) + (p.down || 0));
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   });
-  ctx.stroke();
-  ctx.fillStyle = "rgba(217,119,87,.14)";
-  ctx.lineTo(pad + (series.length - 1) * step, h - pad);
-  ctx.lineTo(pad, h - pad);
+  ctx.lineTo(xOf(n - 1), h - padB);
+  ctx.lineTo(xOf(0), h - padB);
   ctx.closePath();
+  ctx.fillStyle = "rgba(217,119,87,0.10)";
   ctx.fill();
+
+  drawLine("up", upColor, false);
+  drawLine("down", downColor, false);
+  drawLine("total", brand, true);
+
+  // points + day labels
+  ctx.fillStyle = muted;
+  ctx.font = "11px system-ui, sans-serif";
+  series.forEach((p, i) => {
+    const x = xOf(i);
+    const showLabel = n <= 8 || i === 0 || i === n - 1 || i % Math.ceil(n / 6) === 0;
+    if (showLabel) {
+      const label = String(p.day || "").slice(5); // MM-DD
+      const tw = ctx.measureText(label).width;
+      ctx.fillText(label, x - tw / 2, h - 8);
+    }
+    // dots
+    ctx.beginPath();
+    ctx.fillStyle = upColor;
+    ctx.arc(x, yOf(p.up || 0), 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.fillStyle = downColor;
+    ctx.arc(x, yOf(p.down || 0), 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function dashStatCard({ icon, label, value, hint, tone }) {
+  return `<div class="stat stat-rich${tone ? " tone-" + tone : ""}">
+    <div class="stat-top">
+      <span class="stat-ico" aria-hidden="true">${icon}</span>
+    </div>
+    <div class="n">${value}</div>
+    <div class="l">${escapeHtml(label)}</div>
+    ${hint ? `<div class="stat-hint">${escapeHtml(hint)}</div>` : ""}
+  </div>`;
+}
+
+function renderDashServers(list) {
+  const box = $("#dash-servers");
+  if (!box) return;
+  if (!list?.length) {
+    box.innerHTML = `<div class="dash-empty">暂无服务器 · 点击上方「接入服务器」开始</div>`;
+    return;
+  }
+  box.innerHTML = list.map((s) => {
+    const st = s.status || "offline";
+    const label = st === "online" ? "在线" : st === "pending" ? "待装" : "离线";
+    const chip = st === "online" ? "on" : st === "pending" ? "pending" : "off";
+    const host = s.domain || s.public_ip || s.hostname || "—";
+    const xray = s.xray_running ? "Xray 运行" : "Xray 停";
+    return `<div class="dash-srv" data-go="servers" title="${escapeHtml(s.name)}">
+      <span class="dot ${chip}"></span>
+      <div class="ds-main">
+        <div class="ds-name">${escapeHtml(s.name)} <span class="chip ${chip}" style="margin-left:.25rem">${label}</span></div>
+        <div class="ds-meta">${escapeHtml(host)} · ${xray}</div>
+      </div>
+      <div class="ds-speed">↑ ${fmtSpeed(s.speed_up)}<br>↓ ${fmtSpeed(s.speed_down)}</div>
+    </div>`;
+  }).join("");
+  box.querySelectorAll("[data-go]").forEach((el) => {
+    el.onclick = () => switchTab(el.dataset.go);
+  });
+}
+
+function renderDashProtocols(list) {
+  const box = $("#dash-protocols");
+  if (!box) return;
+  if (!list?.length) {
+    box.innerHTML = `<div class="dash-empty">暂无入站节点</div>`;
+    return;
+  }
+  const max = Math.max(1, ...list.map((p) => p.count || 0));
+  box.innerHTML = list.map((p) => {
+    const pct = Math.round(((p.count || 0) / max) * 100);
+    return `<div class="proto-row">
+      <span class="p-name" title="${escapeHtml(p.protocol)}">${escapeHtml(p.protocol)}</span>
+      <span class="p-bar"><i style="width:${pct}%"></i></span>
+      <span class="p-cnt">${p.count || 0}</span>
+    </div>`;
+  }).join("");
+}
+
+function renderDashAlerts(list) {
+  const box = $("#dash-alerts");
+  if (!box) return;
+  box.innerHTML = (list || []).map((a) => {
+    const level = a.level || "info";
+    const go = a.go ? ` data-go="${escapeHtml(a.go)}"` : "";
+    return `<div class="alert-item ${escapeHtml(level)}"${go}>
+      <span class="a-dot"></span>
+      <span>${escapeHtml(a.text || "")}</span>
+    </div>`;
+  }).join("");
+  box.querySelectorAll("[data-go]").forEach((el) => {
+    el.onclick = () => {
+      if (el.dataset.go) switchTab(el.dataset.go);
+    };
+  });
 }
 
 async function refreshDash() {
   const d = await api("/api/dashboard");
-  $("#dash-stats").innerHTML = [
-    ["成员", d.users], ["服务器", d.servers], ["在线", d.online], ["离线", d.offline || 0],
-    ["节点", d.inbounds], ["套餐", d.plans],
-    ["累计上行", fmtBytes(d.traffic_up)], ["累计下行", fmtBytes(d.traffic_down)],
-    ["实时上行", fmtSpeed(d.speed_up)], ["实时下行", fmtSpeed(d.speed_down)],
-  ].map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
-  drawChart(d.series || []);
+  if ($("#dash-ver")) $("#dash-ver").textContent = "v" + (d.version || state.meta?.version || "?");
+
+  const en = d.inbounds_enabled != null ? d.inbounds_enabled : d.inbounds;
+  const offline = d.offline || 0;
+  const pending = d.pending || 0;
+  const cards = [
+    { icon: "☺", label: "成员", value: d.users ?? 0, hint: "注册账号", tone: "info" },
+    { icon: "⬡", label: "服务器", value: d.servers ?? 0, hint: `在线 ${d.online || 0} · 待装 ${pending}`, tone: "info" },
+    { icon: "●", label: "在线", value: d.online ?? 0, hint: offline ? `离线 ${offline}` : "全部在线", tone: "ok" },
+    { icon: "○", label: "离线", value: offline, hint: pending ? `另有 ${pending} 待装` : "无响应", tone: offline ? "warn" : "" },
+    { icon: "◎", label: "入站节点", value: d.inbounds ?? 0, hint: `启用 ${en}`, tone: "info" },
+    { icon: "⚡", label: "Xray 运行", value: d.xray_running ?? 0, hint: `共 ${d.servers || 0} 台`, tone: "ok" },
+    { icon: "▤", label: "套餐", value: d.plans ?? 0, hint: "流量套餐", tone: "" },
+    { icon: "⚿", label: "证书", value: d.certs ?? 0, hint: (d.certs_expiring || 0) ? `${d.certs_expiring} 即将到期` : "有效证书", tone: (d.certs_expiring || 0) ? "warn" : "" },
+    { icon: "↑", label: "今日上行", value: fmtBytes(d.today_up), hint: "当日累计", tone: "" },
+    { icon: "↓", label: "今日下行", value: fmtBytes(d.today_down), hint: "当日累计", tone: "" },
+    { icon: "↗", label: "实时上行", value: fmtSpeed(d.speed_up), hint: "全机合计", tone: "ok" },
+    { icon: "↘", label: "实时下行", value: fmtSpeed(d.speed_down), hint: "全机合计", tone: "ok" },
+    { icon: "⬆", label: "累计上行", value: fmtBytes(d.traffic_up), hint: "历史总计", tone: "" },
+    { icon: "⬇", label: "累计下行", value: fmtBytes(d.traffic_down), hint: "历史总计", tone: "" },
+  ];
+  if ($("#dash-stats")) {
+    $("#dash-stats").innerHTML = cards.map(dashStatCard).join("");
+  }
+
+  const series = d.series || [];
+  state._lastDashSeries = series;
+  drawChart(series);
+  let sumUp = 0, sumDown = 0;
+  series.forEach((p) => { sumUp += p.up || 0; sumDown += p.down || 0; });
+  if ($("#dash-chart-summary")) {
+    $("#dash-chart-summary").innerHTML = series.length
+      ? `<span>14 日上行 <strong>${fmtBytes(sumUp)}</strong></span>
+         <span>14 日下行 <strong>${fmtBytes(sumDown)}</strong></span>
+         <span>合计 <strong>${fmtBytes(sumUp + sumDown)}</strong></span>
+         <span>今日 <strong>↑ ${fmtBytes(d.today_up)} / ↓ ${fmtBytes(d.today_down)}</strong></span>`
+      : `<span>等待流量数据上报…</span>`;
+  }
+
+  renderDashServers(d.servers_preview || []);
+  renderDashProtocols(d.protocols || []);
+  renderDashAlerts(d.alerts || []);
 }
-if ($("#btn-refresh-dash")) $("#btn-refresh-dash").onclick = () => refreshDash();
+if ($("#btn-refresh-dash")) $("#btn-refresh-dash").onclick = () => refreshDash().catch((e) => toast(e.message, "err"));
+$("#dash-go-srv") && ($("#dash-go-srv").onclick = () => switchTab("servers"));
+// resize chart when window changes
+window.addEventListener("resize", () => {
+  if (state.currentTab === "dash" && state._lastDashSeries) drawChart(state._lastDashSeries);
+});
 
 async function fillServerSelects() {
   const data = await api("/api/servers");

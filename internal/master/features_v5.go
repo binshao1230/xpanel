@@ -661,15 +661,29 @@ func (s *ServerApp) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 // ---- Dashboard v5 ----
 
 func (s *ServerApp) handleDashboardV5(w http.ResponseWriter, r *http.Request) {
-	var users, servers, online, inbounds, plans, offline int
+	var users, servers, online, inbounds, plans, offline, pending int
+	var inEnabled, xrayRunning, certs, extNodes, invites int
+	now := nowUnix()
 	_ = s.db.QueryRow(`SELECT COUNT(1) FROM users`).Scan(&users)
 	_ = s.db.QueryRow(`SELECT COUNT(1) FROM servers`).Scan(&servers)
-	_ = s.db.QueryRow(`SELECT COUNT(1) FROM servers WHERE last_seen > ?`, nowUnix()-45).Scan(&online)
-	_ = s.db.QueryRow(`SELECT COUNT(1) FROM servers WHERE last_seen > 0 AND last_seen <= ?`, nowUnix()-45).Scan(&offline)
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM servers WHERE last_seen > ?`, now-45).Scan(&online)
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM servers WHERE last_seen > 0 AND last_seen <= ?`, now-45).Scan(&offline)
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM servers WHERE last_seen = 0 OR status='pending'`).Scan(&pending)
 	_ = s.db.QueryRow(`SELECT COUNT(1) FROM inbounds`).Scan(&inbounds)
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM inbounds WHERE enabled=1`).Scan(&inEnabled)
 	_ = s.db.QueryRow(`SELECT COUNT(1) FROM plans`).Scan(&plans)
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM servers WHERE COALESCE(xray_running,0)=1`).Scan(&xrayRunning)
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM certificates`).Scan(&certs)
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM external_nodes`).Scan(&extNodes)
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM invite_codes WHERE enabled=1`).Scan(&invites)
+
 	var up, down, speedUp, speedDown int64
 	_ = s.db.QueryRow(`SELECT COALESCE(SUM(traffic_up),0), COALESCE(SUM(traffic_down),0), COALESCE(SUM(speed_up),0), COALESCE(SUM(speed_down),0) FROM servers`).Scan(&up, &down, &speedUp, &speedDown)
+
+	// today traffic from traffic_daily (YYYY-MM-DD in local server date)
+	today := time.Now().Format("2006-01-02")
+	var todayUp, todayDown int64
+	_ = s.db.QueryRow(`SELECT COALESCE(SUM(up),0), COALESCE(SUM(down),0) FROM traffic_daily WHERE day=?`, today).Scan(&todayUp, &todayDown)
 
 	// 14-day traffic series
 	rows, err := s.db.Query(`SELECT day, SUM(up), SUM(down) FROM traffic_daily GROUP BY day ORDER BY day DESC LIMIT 14`)
@@ -683,17 +697,99 @@ func (s *ServerApp) handleDashboardV5(w http.ResponseWriter, r *http.Request) {
 				series = append(series, map[string]any{"day": day, "up": u, "down": d})
 			}
 		}
-		// reverse
 		for i, j := 0, len(series)-1; i < j; i, j = i+1, j-1 {
 			series[i], series[j] = series[j], series[i]
 		}
 	}
+
+	// protocol distribution
+	protocols := []map[string]any{}
+	if prows, err := s.db.Query(`SELECT protocol, COUNT(1) FROM inbounds GROUP BY protocol ORDER BY COUNT(1) DESC`); err == nil {
+		defer prows.Close()
+		for prows.Next() {
+			var proto string
+			var cnt int
+			if prows.Scan(&proto, &cnt) == nil {
+				protocols = append(protocols, map[string]any{"protocol": proto, "count": cnt})
+			}
+		}
+	}
+
+	// server preview (recent / status)
+	serverPreview := []map[string]any{}
+	if srows, err := s.db.Query(`
+SELECT id, name, public_ip, COALESCE(domain,''), status, last_seen,
+  COALESCE(xray_running,0), COALESCE(traffic_up,0), COALESCE(traffic_down,0),
+  COALESCE(speed_up,0), COALESCE(speed_down,0), COALESCE(agent_error,''), COALESCE(hostname,'')
+FROM servers ORDER BY
+  CASE WHEN last_seen > ? THEN 0 WHEN last_seen = 0 OR status='pending' THEN 1 ELSE 2 END,
+  name COLLATE NOCASE
+LIMIT 8`, now-45); err == nil {
+		defer srows.Close()
+		for srows.Next() {
+			var id, name, ip, domain, status, host, agentErr string
+			var lastSeen, tUp, tDown, sUp, sDown int64
+			var xray int
+			if srows.Scan(&id, &name, &ip, &domain, &status, &lastSeen, &xray, &tUp, &tDown, &sUp, &sDown, &agentErr, &host) != nil {
+				continue
+			}
+			st := "offline"
+			if lastSeen > now-45 {
+				st = "online"
+			} else if lastSeen == 0 || status == "pending" {
+				st = "pending"
+			}
+			serverPreview = append(serverPreview, map[string]any{
+				"id": id, "name": name, "public_ip": ip, "domain": domain, "hostname": host,
+				"status": st, "xray_running": xray == 1,
+				"traffic_up": tUp, "traffic_down": tDown,
+				"speed_up": sUp, "speed_down": sDown,
+				"agent_error": agentErr,
+			})
+		}
+	}
+
+	// alerts
+	alerts := []map[string]any{}
+	if offline > 0 {
+		alerts = append(alerts, map[string]any{"level": "warn", "text": fmt.Sprintf("%d 台服务器离线", offline), "go": "servers"})
+	}
+	if pending > 0 {
+		alerts = append(alerts, map[string]any{"level": "info", "text": fmt.Sprintf("%d 台待安装 Agent", pending), "go": "servers"})
+	}
+	// agent errors
+	var errCount int
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM servers WHERE COALESCE(agent_error,'') != ''`).Scan(&errCount)
+	if errCount > 0 {
+		alerts = append(alerts, map[string]any{"level": "err", "text": fmt.Sprintf("%d 台 Agent 上报异常", errCount), "go": "servers"})
+	}
+	// certs expiring in 14 days
+	var expiring int
+	expireSoon := now + 14*24*3600
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM certificates WHERE expire_at > 0 AND expire_at <= ?`, expireSoon).Scan(&expiring)
+	if expiring > 0 {
+		alerts = append(alerts, map[string]any{"level": "warn", "text": fmt.Sprintf("%d 张证书将在 14 天内到期", expiring), "go": "certs"})
+	}
+	if inbounds > 0 && inEnabled == 0 {
+		alerts = append(alerts, map[string]any{"level": "warn", "text": "所有入站节点均已禁用", "go": "inbounds"})
+	}
+	if servers == 0 {
+		alerts = append(alerts, map[string]any{"level": "info", "text": "尚未接入服务器，先部署 Agent", "go": "servers"})
+	}
+	if len(alerts) == 0 {
+		alerts = append(alerts, map[string]any{"level": "ok", "text": "运行正常，暂无告警", "go": ""})
+	}
+
 	writeJSON(w, 200, map[string]any{
-		"users": users, "servers": servers, "online": online, "offline": offline,
-		"inbounds": inbounds, "plans": plans,
+		"users": users, "servers": servers, "online": online, "offline": offline, "pending": pending,
+		"inbounds": inbounds, "inbounds_enabled": inEnabled, "plans": plans,
+		"xray_running": xrayRunning, "certs": certs, "certs_expiring": expiring,
+		"external_nodes": extNodes, "invites": invites,
 		"traffic_up": up, "traffic_down": down,
 		"speed_up": speedUp, "speed_down": speedDown,
-		"series":  series,
+		"today_up": todayUp, "today_down": todayDown,
+		"series": series, "protocols": protocols,
+		"servers_preview": serverPreview, "alerts": alerts,
 		"version": version.Version,
 	})
 }

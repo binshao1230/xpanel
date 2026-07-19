@@ -100,19 +100,76 @@
       <main class="main">
         <section id="tab-dash" class="tab">
           <div class="quick-actions" id="dash-quick">
-            <button type="button" class="qa-card" data-go="servers"><span>⬡</span><b>接入服务器</b><small>部署 Agent</small></button>
-            <button type="button" class="qa-card" data-go="inbounds"><span>◎</span><b>新建节点</b><small>模板快速创建</small></button>
-            <button type="button" class="qa-card" data-go="certs"><span>⚿</span><b>申请证书</b><small>Let's Encrypt</small></button>
-            <button type="button" class="qa-card" data-go="settings" data-upd="1"><span>↻</span><b>检查更新</b><small>升级主控版本</small></button>
+            <button type="button" class="qa-card" data-go="servers">
+              <span class="qa-ico" aria-hidden="true">⬡</span>
+              <span class="qa-body"><b>接入服务器</b><small>部署 Agent</small></span>
+            </button>
+            <button type="button" class="qa-card" data-go="inbounds">
+              <span class="qa-ico" aria-hidden="true">◎</span>
+              <span class="qa-body"><b>新建节点</b><small>模板快速创建</small></span>
+            </button>
+            <button type="button" class="qa-card" data-go="links">
+              <span class="qa-ico" aria-hidden="true">◈</span>
+              <span class="qa-body"><b>分享链接</b><small>复制 / 扫码</small></span>
+            </button>
+            <button type="button" class="qa-card" data-go="certs">
+              <span class="qa-ico" aria-hidden="true">⚿</span>
+              <span class="qa-body"><b>申请证书</b><small>Let's Encrypt</small></span>
+            </button>
+            <button type="button" class="qa-card" data-go="users">
+              <span class="qa-ico" aria-hidden="true">☺</span>
+              <span class="qa-body"><b>成员管理</b><small>账号与套餐</small></span>
+            </button>
+            <button type="button" class="qa-card" data-go="settings" data-upd="1">
+              <span class="qa-ico" aria-hidden="true">↻</span>
+              <span class="qa-body"><b>检查更新</b><small>升级主控</small></span>
+            </button>
           </div>
+
           <div class="page-head">
-            <div><h2>运行概览</h2><div class="sub">机器状态、节点数量与近两周流量</div></div>
-            <button class="small" id="btn-refresh-dash">刷新</button>
+            <div>
+              <h2>运行概览</h2>
+              <div class="sub">机器状态 · 节点 · 流量 · 告警 · 协议分布</div>
+            </div>
+            <div class="row" style="margin:0;gap:.45rem">
+              <span class="chip" id="dash-ver" title="主控版本">—</span>
+              <button class="small" id="btn-refresh-dash">刷新</button>
+            </div>
           </div>
-          <div class="stats" id="dash-stats"></div>
-          <div class="card" style="margin-top:1rem">
-            <h3>近 14 日流量趋势</h3>
-            <canvas id="traffic-chart" class="chart" width="1000" height="160"></canvas>
+
+          <div class="stats stats-rich" id="dash-stats"></div>
+
+          <div class="dash-grid">
+            <div class="card dash-chart-card">
+              <div class="dash-card-head">
+                <h3>近 14 日流量</h3>
+                <div class="chart-legend">
+                  <span class="lg-item lg-up">上行</span>
+                  <span class="lg-item lg-down">下行</span>
+                  <span class="lg-item lg-total">合计</span>
+                </div>
+              </div>
+              <canvas id="traffic-chart" class="chart" width="1000" height="200"></canvas>
+              <div class="chart-summary" id="dash-chart-summary"></div>
+            </div>
+            <div class="card dash-side-card">
+              <div class="dash-card-head">
+                <h3>服务器</h3>
+                <button type="button" class="small ghost" data-go="servers" id="dash-go-srv">全部</button>
+              </div>
+              <div id="dash-servers" class="dash-list"></div>
+            </div>
+          </div>
+
+          <div class="dash-grid dash-grid-2">
+            <div class="card">
+              <div class="dash-card-head"><h3>协议分布</h3></div>
+              <div id="dash-protocols" class="proto-bars"></div>
+            </div>
+            <div class="card">
+              <div class="dash-card-head"><h3>状态提醒</h3></div>
+              <div id="dash-alerts" class="alert-list"></div>
+            </div>
           </div>
         </section>
 
