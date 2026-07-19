@@ -12,7 +12,14 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	// Agents are non-browser clients (no Origin). Reject cross-site browser sockets.
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		return originOK(r, origin)
+	},
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
 }

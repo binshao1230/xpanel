@@ -62,10 +62,21 @@
   --sidebar-accent-foreground: var(--accent-foreground);
   --sidebar-border: var(--border);
 
-  --font-sans: "Inter", "OPlusSans3", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica,
-    Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Monaco, "Courier New", monospace;
+  /*
+   * 系统优先字体栈：中文优先可读，西文走 system-ui / Segoe / SF Pro。
+   * 不依赖 CDN（面板常离线/自托管）；去掉未加载的 Inter / OPlusSans3。
+   */
+  --font-sans: system-ui, -apple-system, "Segoe UI Variable", "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",
+    "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC",
+    "Helvetica Neue", Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Cascadia Code", "SF Mono",
+    "JetBrains Mono", "Segoe UI Mono", "Liberation Mono", Menlo, Consolas,
+    "Courier New", monospace;
+  --font-size-base: 15px;
+  --line-height-base: 1.55;
+  --letter-tight: -0.015em;
+  --letter-wide: 0.04em;
 
   /* 兼容旧变量名 */
   --bg: var(--background);
@@ -122,6 +133,9 @@ body {
 
 html {
   color-scheme: light;
+  font-size: var(--font-size-base);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 html.dark {
   color-scheme: dark;
@@ -133,6 +147,15 @@ body {
   width: 100%;
   overflow-x: hidden;
   font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: var(--line-height-base);
+  letter-spacing: 0.01em;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   color: var(--foreground);
   background-color: var(--background);
   background-image:
@@ -169,6 +192,24 @@ kbd,
 samp,
 .mono {
   font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1, "liga" 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-feature-settings: inherit;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: var(--letter-tight);
+  text-wrap: balance;
 }
 
 button:not(:disabled),
@@ -514,6 +555,9 @@ nav {
   border-radius: 0;
   cursor: pointer;
   font: inherit;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
   box-shadow: none;
   transition: background 0.2s ease, border-color 0.2s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
@@ -574,15 +618,18 @@ html.dark .nav.active {
 }
 .page-head h2 {
   margin: 0;
-  font-size: 1.32rem;
-  letter-spacing: -0.01em;
+  font-size: 1.28rem;
+  letter-spacing: var(--letter-tight);
   font-weight: 700;
   color: var(--foreground);
+  line-height: 1.3;
 }
 .page-head .sub {
   color: var(--muted-foreground);
-  font-size: 0.88rem;
-  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  margin-top: 0.28rem;
+  line-height: 1.45;
+  letter-spacing: 0.005em;
 }
 
 .stats {
@@ -595,9 +642,11 @@ html.dark .nav.active {
 }
 .stat .n {
   font-size: 1.4rem;
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 .stat .l {
   color: var(--muted-foreground);
@@ -850,7 +899,7 @@ textarea {
 h3 {
   margin: 0 0 0.75rem;
   font-size: 1rem;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--foreground);
 }
 .progress {
@@ -1032,7 +1081,7 @@ details.fold > summary {
   list-style: none;
   cursor: pointer;
   padding: 0.65rem 0.85rem;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--foreground);
   display: flex;
   align-items: center;
@@ -1109,13 +1158,16 @@ html.dark .topbar {
 }
 .topbar-title h1 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.08rem;
   font-weight: 700;
+  letter-spacing: var(--letter-tight);
+  line-height: 1.3;
   color: var(--foreground);
 }
 .topbar-title .sub {
-  margin: 0.1rem 0 0;
+  margin: 0.12rem 0 0;
   font-size: 0.8rem;
+  line-height: 1.4;
   color: var(--muted-foreground);
 }
 .topbar-actions {
@@ -1137,7 +1189,7 @@ html.dark .topbar {
   align-items: center;
   gap: 0.55rem;
   padding: 0.55rem 0.65rem 0.95rem;
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: 0.04em;
   font-size: 1.05rem;
   color: var(--primary);
@@ -1159,7 +1211,7 @@ html.dark .topbar {
   text-shadow: none;
 }
 .brand-text {
-  font-weight: 750;
+  font-weight: 700;
   color: var(--primary);
   line-height: 1.25;
 }
@@ -1173,12 +1225,14 @@ html.dark .topbar {
   text-shadow: none;
 }
 .nav-group {
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--muted-foreground);
-  padding: 0.65rem 0.85rem 0.25rem;
-  font-weight: 650;
+  padding: 0.7rem 0.85rem 0.28rem;
+  font-weight: 600;
+  font-feature-settings: "smcp" 0;
+  opacity: 0.92;
 }
 .nav-ico {
   display: inline-block;

@@ -78,7 +78,7 @@ func New(cfg Config) (*ServerApp, error) {
 }
 
 func (s *ServerApp) Handler() http.Handler {
-	return cors(s.mux)
+	return securityHeaders(cors(s.mux))
 }
 
 func (s *ServerApp) Close() error { return s.db.Close() }
@@ -257,12 +257,22 @@ func (s *ServerApp) handleSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ServerApp) handleLogin(w http.ResponseWriter, r *http.Request) {
+	ip := clientIP(r)
+	if !globalLoginLimit.allow(ip) {
+		writeJSON(w, 429, map[string]string{"error": "登录尝试过于频繁，请稍后再试"})
+		return
+	}
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeJSON(w, 400, map[string]string{"error": "bad json"})
+		return
+	}
+	body.Username = strings.TrimSpace(body.Username)
+	if body.Username == "" || body.Password == "" {
+		writeJSON(w, 401, map[string]string{"error": "invalid credentials"})
 		return
 	}
 	var u User

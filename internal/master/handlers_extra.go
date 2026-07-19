@@ -597,6 +597,26 @@ func (s *ServerApp) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 // ---- Settings ----
 
+// allowedSettingsKeys whitelist prevents arbitrary key injection via PUT /api/settings.
+var allowedSettingsKeys = map[string]bool{
+	"site_name":        true,
+	"theme":            true,
+	"probe_mode":       true,
+	"acme_email":       true,
+	"cf_dns_api_token": true,
+	"dns_api_key":      true,
+	"dns_api_secret":   true,
+	"webhook_url":      true,
+}
+
+// secretSettingsKeys are redacted for non-admin readers.
+var secretSettingsKeys = map[string]bool{
+	"cf_dns_api_token": true,
+	"dns_api_key":      true,
+	"dns_api_secret":   true,
+	"webhook_url":      true,
+}
+
 func (s *ServerApp) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.Query(`SELECT key,value FROM settings`)
 	if err != nil {
@@ -611,12 +631,21 @@ func (s *ServerApp) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 			m[k] = v
 		}
 	}
-	// defaults — softer auto theme by default
+	// defaults
 	if _, ok := m["site_name"]; !ok {
 		m["site_name"] = "BPanel"
 	}
 	if _, ok := m["theme"]; !ok {
-		m["theme"] = "auto"
+		m["theme"] = "system"
+	}
+	// Non-admin: hide secrets (token/key/secret/webhook).
+	c := userFrom(r.Context())
+	if c == nil || c.Role != "admin" {
+		for k := range secretSettingsKeys {
+			if v, ok := m[k]; ok && v != "" {
+				m[k] = "********"
+			}
+		}
 	}
 	writeJSON(w, 200, map[string]any{"settings": m})
 }
@@ -627,10 +656,22 @@ func (s *ServerApp) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": "bad json"})
 		return
 	}
+	saved := 0
 	for k, v := range body {
+		if !allowedSettingsKeys[k] {
+			continue
+		}
+		// Don't overwrite secrets with masked placeholder from a non-refreshed form.
+		if secretSettingsKeys[k] && (v == "********" || v == "****") {
+			continue
+		}
+		if len(k) > 64 || len(v) > 8192 {
+			continue
+		}
 		_, _ = s.db.Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, v)
+		saved++
 	}
-	writeJSON(w, 200, map[string]any{"ok": true})
+	writeJSON(w, 200, map[string]any{"ok": true, "saved": saved})
 }
 
 // ---- Reality quick create helper ----

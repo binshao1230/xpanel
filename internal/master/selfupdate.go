@@ -271,8 +271,31 @@ func (s *ServerApp) handleSelfUpdate(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
+const maxUpdateBytes = 120 << 20 // 120 MiB hard cap for self-update binary
+
+func isGitHubDownloadHost(host string) bool {
+	host = strings.ToLower(host)
+	return host == "github.com" ||
+		host == "www.github.com" ||
+		strings.HasSuffix(host, ".github.com") ||
+		host == "objects.githubusercontent.com" ||
+		strings.HasSuffix(host, ".githubusercontent.com") ||
+		host == "release-assets.githubusercontent.com"
+}
+
 func downloadBinary(url, dest string) error {
-	client := &http.Client{Timeout: 5 * time.Minute}
+	client := &http.Client{
+		Timeout: 5 * time.Minute,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 8 {
+				return fmt.Errorf("too many redirects")
+			}
+			if !isGitHubDownloadHost(req.URL.Host) {
+				return fmt.Errorf("redirect to non-GitHub host blocked: %s", req.URL.Host)
+			}
+			return nil
+		},
+	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -285,6 +308,9 @@ func downloadBinary(url, dest string) error {
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
 		return fmt.Errorf("HTTP %d", res.StatusCode)
+	}
+	if cl := res.ContentLength; cl > maxUpdateBytes {
+		return fmt.Errorf("asset too large (%d bytes)", cl)
 	}
 	// reject HTML error pages
 	buf := make([]byte, 32)
@@ -303,8 +329,13 @@ func downloadBinary(url, dest string) error {
 			return err
 		}
 	}
-	if _, err := io.Copy(f, res.Body); err != nil {
+	// Cap total bytes read (head + rest).
+	rest, err := io.Copy(f, io.LimitReader(res.Body, maxUpdateBytes-int64(n)+1))
+	if err != nil {
 		return err
+	}
+	if int64(n)+rest > maxUpdateBytes {
+		return fmt.Errorf("asset exceeds size limit")
 	}
 	return f.Sync()
 }
