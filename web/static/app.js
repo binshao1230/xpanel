@@ -1750,20 +1750,43 @@ $("#btn-reality") && ($("#btn-reality").onclick = async () => {
     if ($("#in-server")) $("#in-server").value = server_id;
   }
   if (!server_id) return toast("请先添加并选择服务器", "warn");
+  const srv = (state.servers || []).find((s) => s.id === server_id);
+  if (srv && !srv.online && srv.status !== "online") {
+    if (!(await uiConfirm("所选服务器当前离线，节点会创建但需 Agent 上线后才会生效。继续？", "服务器离线"))) return;
+  }
+  const port = Number(getTplValue("#in-port-tpl", "#in-port")) || 443;
+  let dest = (getTplValue("#in-dest-tpl", "#in-dest") || "").trim();
+  let sni = (getTplValue("#in-sni-tpl", "#in-sni") || "").trim();
+  if (!sni) sni = "www.microsoft.com";
+  if (!dest) dest = sni.includes(":") ? sni : (sni + ":443");
+  else if (!dest.includes(":")) dest = dest + ":443";
   try {
     const r = await api("/api/inbounds/quick-reality", {
       method: "POST",
       body: JSON.stringify({
         server_id,
-        port: Number(getTplValue("#in-port-tpl", "#in-port")) || 443,
-        dest: getTplValue("#in-dest-tpl", "#in-dest") || undefined,
-        sni: getTplValue("#in-sni-tpl", "#in-sni") || undefined,
+        port,
+        dest,
+        sni,
         flow: getSelectOrCustomSimple("#in-flow", "#in-flow-custom") || "xtls-rprx-vision",
         name: $("#in-tag")?.value.trim() || undefined,
       }),
     });
-    toast("Reality 节点已创建", "ok");
-    showResult("Reality 已创建", `PublicKey:\n${r.public_key}\n\n分享链接:\n${r.share_link || ""}`);
+    toast("Reality 节点已创建并下发", "ok");
+    const tip = [
+      `服务器: ${r.server || ""}`,
+      `地址: ${r.address || ""}:${port}`,
+      `SNI: ${r.sni || sni}`,
+      `Dest: ${r.dest || dest}`,
+      `PublicKey (pbk):\n${r.public_key || ""}`,
+      `ShortId: ${r.short_id || ""}`,
+      "",
+      r.note || "",
+      "",
+      "分享链接:",
+      r.share_link || "",
+    ].join("\n");
+    showResult("Reality 已创建", tip);
     await refreshInbounds();
     if (r.share_link || r.id) {
       setTimeout(() => showQR({

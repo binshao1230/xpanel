@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -34,14 +35,32 @@ func (s *ServerApp) handleQuickRealityV5(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, 400, map[string]string{"error": "server_id required"})
 		return
 	}
+	// verify server exists
+	var srvName string
+	if err := s.db.QueryRow(`SELECT name FROM servers WHERE id=?`, body.ServerID).Scan(&srvName); err != nil {
+		writeJSON(w, 404, map[string]string{"error": "server not found"})
+		return
+	}
 	if body.Port <= 0 {
 		body.Port = 443
 	}
-	if body.Dest == "" {
-		body.Dest = "www.microsoft.com:443"
-	}
+	body.SNI = strings.TrimSpace(body.SNI)
+	body.Dest = strings.TrimSpace(body.Dest)
 	if body.SNI == "" {
 		body.SNI = "www.microsoft.com"
+	}
+	if body.Dest == "" {
+		body.Dest = body.SNI + ":443"
+	} else if !strings.Contains(body.Dest, ":") {
+		body.Dest = body.Dest + ":443"
+	}
+	// dest host should match SNI family when operator only filled one side
+	if body.SNI == "" {
+		host := body.Dest
+		if i := strings.LastIndex(host, ":"); i > 0 {
+			host = host[:i]
+		}
+		body.SNI = host
 	}
 	if body.Flow == "" {
 		body.Flow = "xtls-rprx-vision"
@@ -51,13 +70,21 @@ func (s *ServerApp) handleQuickRealityV5(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
+	// double-check pair consistency (client pbk must match server privateKey)
+	if derived, err := xpcrypto.PublicFromPrivate(priv); err == nil && derived != "" {
+		pub = derived
+	}
 	shortID, _ := xpcrypto.RandomShortID()
 	clientID := uuid.NewString()
 	settings := map[string]any{
 		"clients":    []map[string]any{{"id": clientID, "email": "reality@bpanel", "flow": body.Flow}},
 		"decryption": "none",
 		// panel meta (stripped before agent deploy; kept for share links)
-		"bpanelMeta": map[string]any{"publicKey": pub, "shortId": shortID},
+		"bpanelMeta": map[string]any{
+			"publicKey":   pub,
+			"shortId":     shortID,
+			"fingerprint": "chrome",
+		},
 	}
 	stream := map[string]any{
 		"network":  "tcp",
@@ -71,9 +98,14 @@ func (s *ServerApp) handleQuickRealityV5(w http.ResponseWriter, r *http.Request)
 			"shortIds":    []string{shortID, ""},
 		},
 	}
+	// validate deployable before insert
+	if _, _, skip := xraycfg.SanitizeInbound("vless", body.Port, settings, stream); skip != "" {
+		writeJSON(w, 400, map[string]string{"error": "reality 配置无效: " + skip})
+		return
+	}
 	sj, _ := json.Marshal(settings)
 	st, _ := json.Marshal(stream)
-	tag := body.Name
+	tag := strings.TrimSpace(body.Name)
 	if tag == "" {
 		tag = fmt.Sprintf("vless-reality-%d", body.Port)
 	}
@@ -89,27 +121,59 @@ func (s *ServerApp) handleQuickRealityV5(w http.ResponseWriter, r *http.Request)
 	s.bumpServer(body.ServerID)
 	s.audit("admin", "create_reality", tag)
 
-	// share link template (address filled by server public_ip later)
-	var ip string
-	_ = s.db.QueryRow(`SELECT public_ip FROM servers WHERE id=?`, body.ServerID).Scan(&ip)
-	if ip == "" {
-		ip = "YOUR_IP"
+	// prefer domain over public_ip for share links (same as list links)
+	var domain, ip string
+	_ = s.db.QueryRow(`SELECT COALESCE(domain,''), COALESCE(public_ip,'') FROM servers WHERE id=?`, body.ServerID).Scan(&domain, &ip)
+	addr := strings.TrimSpace(domain)
+	if addr == "" {
+		addr = strings.TrimSpace(ip)
 	}
-	link := fmt.Sprintf(
-		"vless://%s@%s:%d?encryption=none&flow=%s&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=tcp#%s",
-		clientID, ip, body.Port, body.Flow, body.SNI, pub, shortID, urlQueryEscape(tag),
-	)
+	if addr == "" {
+		addr = "YOUR_IP"
+	}
+	link := buildVLESSRealityLink(clientID, addr, body.Port, body.Flow, body.SNI, pub, shortID, "chrome", tag)
 	writeJSON(w, 200, map[string]any{
 		"id": id, "tag": tag, "client_id": clientID,
 		"private_key": priv, "public_key": pub, "short_id": shortID,
 		"share_link": link,
 		"sni":        body.SNI,
 		"dest":       body.Dest,
+		"server":     srvName,
+		"address":    addr,
+		"note":       "请确认服务器防火墙已放行端口，且 Agent 在线已拉取配置。dest 站点需可被节点机器访问。",
 	})
 }
 
+func buildVLESSRealityLink(uuidStr, addr string, port int, flow, sni, pbk, sid, fp, name string) string {
+	q := url.Values{}
+	q.Set("encryption", "none")
+	q.Set("security", "reality")
+	q.Set("type", "tcp")
+	if flow != "" {
+		q.Set("flow", flow)
+	}
+	if sni != "" {
+		q.Set("sni", sni)
+	}
+	if fp == "" {
+		fp = "chrome"
+	}
+	q.Set("fp", fp)
+	if pbk != "" {
+		q.Set("pbk", pbk)
+	}
+	if sid != "" {
+		q.Set("sid", sid)
+	}
+	frag := url.PathEscape(name)
+	if frag == "" {
+		frag = "reality"
+	}
+	return fmt.Sprintf("vless://%s@%s:%d?%s#%s", uuidStr, addr, port, q.Encode(), frag)
+}
+
 func urlQueryEscape(s string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(s, " ", "%20"), "#", "%23")
+	return url.QueryEscape(s)
 }
 
 // ---- Share links for all inbounds ----
@@ -171,20 +235,29 @@ func buildShareLink(proto, name, addr string, port int, settingsJSON, streamJSON
 		netw = "tcp"
 	}
 	sni := ""
-	pbk, sid := "", ""
+	pbk, sid, fp := "", "", "chrome"
 	if sec == "reality" {
 		if rs, ok := stream["realitySettings"].(map[string]any); ok {
 			if names, ok := rs["serverNames"].([]any); ok && len(names) > 0 {
 				sni, _ = names[0].(string)
 			}
-			if shortIds, ok := rs["shortIds"].([]any); ok && len(shortIds) > 0 {
-				sid, _ = shortIds[0].(string)
+			// pick first non-empty shortId
+			if shortIds, ok := rs["shortIds"].([]any); ok {
+				for _, x := range shortIds {
+					if s, _ := x.(string); strings.TrimSpace(s) != "" {
+						sid = s
+						break
+					}
+				}
 			}
 		}
 		if meta, ok := settings["bpanelMeta"].(map[string]any); ok {
 			pbk, _ = meta["publicKey"].(string)
 			if sid == "" {
 				sid, _ = meta["shortId"].(string)
+			}
+			if f, _ := meta["fingerprint"].(string); f != "" {
+				fp = f
 			}
 		} else if meta, ok := settings["xpanelMeta"].(map[string]any); ok {
 			// legacy XPanel key
@@ -222,23 +295,22 @@ func buildShareLink(proto, name, addr string, port int, settingsJSON, streamJSON
 
 	switch proto {
 	case "vless":
-		q := fmt.Sprintf("encryption=none&type=%s", netw)
+		if strings.EqualFold(sec, "reality") {
+			return buildVLESSRealityLink(uuidStr, addr, port, flow, sni, pbk, sid, fp, name)
+		}
+		q := url.Values{}
+		q.Set("encryption", "none")
+		q.Set("type", netw)
 		if sec != "" {
-			q += "&security=" + sec
+			q.Set("security", sec)
 		}
 		if sni != "" {
-			q += "&sni=" + sni
+			q.Set("sni", sni)
 		}
 		if flow != "" {
-			q += "&flow=" + flow
+			q.Set("flow", flow)
 		}
-		if sid != "" {
-			q += "&sid=" + sid
-		}
-		if pbk != "" {
-			q += "&pbk=" + pbk + "&fp=chrome"
-		}
-		return fmt.Sprintf("vless://%s@%s:%d?%s#%s", uuidStr, addr, port, q, urlQueryEscape(name))
+		return fmt.Sprintf("vless://%s@%s:%d?%s#%s", uuidStr, addr, port, q.Encode(), url.PathEscape(name))
 	case "vmess":
 		obj := map[string]any{"v": "2", "ps": name, "add": addr, "port": port, "id": uuidStr, "aid": 0, "net": netw, "type": "none", "tls": ""}
 		if sec == "tls" {

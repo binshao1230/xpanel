@@ -115,14 +115,62 @@ func SanitizeInbound(protocol string, port int, settings, stream map[string]any)
 		default:
 			sm["network"] = "tcp"
 		}
+		// Reality Vision requires tcp (not ws/h2)
+		if flow := firstClientFlow(st); flow != "" && strings.Contains(flow, "vision") {
+			sm["network"] = "tcp"
+		}
 		if rs, ok := sm["realitySettings"].(map[string]any); ok {
-			// remove client-only fields that some versions reject on server
-			// keep privateKey, shortIds, serverNames, dest
-			delete(rs, "publicKey")
-			// fingerprint is used by client; server may ignore — keep unless empty
+			// strip client-only / invalid server fields (fingerprint breaks some cores)
+			for _, k := range []string{
+				"publicKey", "fingerprint", "spiderX", "spx", "password",
+				"mldsa65Verify", "serverName", "serverPort",
+			} {
+				delete(rs, k)
+			}
 			if pk, _ := rs["privateKey"].(string); pk == "" || strings.HasPrefix(pk, "REPLACE") {
 				return nil, nil, "Reality privateKey missing"
 			}
+			// normalize dest → host:port (required by Xray handshake)
+			dest, _ := rs["dest"].(string)
+			dest = strings.TrimSpace(dest)
+			if dest == "" {
+				if names, ok := rs["serverNames"].([]any); ok && len(names) > 0 {
+					if s0, _ := names[0].(string); s0 != "" {
+						dest = s0
+					}
+				}
+			}
+			if dest == "" {
+				return nil, nil, "Reality dest missing"
+			}
+			if !strings.Contains(dest, ":") {
+				dest = dest + ":443"
+			}
+			rs["dest"] = dest
+			// ensure serverNames non-empty (SNI list clients must use)
+			namesOK := false
+			switch names := rs["serverNames"].(type) {
+			case []any:
+				namesOK = len(names) > 0
+			case []string:
+				namesOK = len(names) > 0
+			}
+			if !namesOK {
+				host := dest
+				if i := strings.LastIndex(host, ":"); i > 0 {
+					host = host[:i]
+				}
+				rs["serverNames"] = []string{host}
+			}
+			// shortIds: keep non-empty hex + optional empty; drop junk
+			rs["shortIds"] = normalizeShortIDs(rs["shortIds"])
+			if _, ok := rs["show"]; !ok {
+				rs["show"] = false
+			}
+			if _, ok := rs["xver"]; !ok {
+				rs["xver"] = 0
+			}
+			sm["realitySettings"] = rs
 		} else {
 			return nil, nil, "Reality stream missing realitySettings"
 		}
@@ -204,4 +252,75 @@ func ShouldSniff(protocol string) bool {
 	default:
 		return true
 	}
+}
+
+// IsRealityStream reports stream security=reality.
+func IsRealityStream(stream map[string]any) bool {
+	if stream == nil {
+		return false
+	}
+	sec, _ := stream["security"].(string)
+	return strings.EqualFold(sec, "reality")
+}
+
+func firstClientFlow(st map[string]any) string {
+	if c, ok := st["clients"].([]any); ok && len(c) > 0 {
+		if c0, ok := c[0].(map[string]any); ok {
+			f, _ := c0["flow"].(string)
+			return f
+		}
+	}
+	if c, ok := st["clients"].([]map[string]any); ok && len(c) > 0 {
+		f, _ := c[0]["flow"].(string)
+		return f
+	}
+	return ""
+}
+
+func normalizeShortIDs(v any) []string {
+	var raw []string
+	switch t := v.(type) {
+	case []string:
+		raw = t
+	case []any:
+		for _, x := range t {
+			if s, ok := x.(string); ok {
+				raw = append(raw, s)
+			}
+		}
+	}
+	out := make([]string, 0, len(raw)+1)
+	seen := map[string]bool{}
+	hasEmpty := false
+	for _, s := range raw {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			hasEmpty = true
+			continue
+		}
+		// Reality shortId is hex, max 16 chars
+		if len(s) > 16 {
+			s = s[:16]
+		}
+		ok := true
+		for _, c := range s {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				ok = false
+				break
+			}
+		}
+		if !ok || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, strings.ToLower(s))
+	}
+	if len(out) == 0 {
+		// allow empty-only for max compatibility with clients omitting sid
+		return []string{""}
+	}
+	// empty shortId allows clients without sid
+	_ = hasEmpty
+	out = append(out, "")
+	return out
 }

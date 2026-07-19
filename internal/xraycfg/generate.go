@@ -83,10 +83,16 @@ func Build(opts BuildOptions) (map[string]any, string, error) {
 			"streamSettings": stream,
 		}
 		if ShouldSniff(proto) {
-			item["sniffing"] = map[string]any{
+			// Reality + Vision: destOverride without routeOnly rewrites the
+			// tunnel destination and breaks the REALITY handshake / proxy path.
+			sniff := map[string]any{
 				"enabled":      true,
 				"destOverride": []string{"http", "tls", "quic"},
 			}
+			if IsRealityStream(stream) {
+				sniff["routeOnly"] = true
+			}
+			item["sniffing"] = sniff
 		}
 		inList = append(inList, item)
 	}

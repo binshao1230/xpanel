@@ -459,6 +459,11 @@ func (s *ServerApp) composeInboundStream(body *inboundForm) (map[string]any, err
 		if fp == "" {
 			fp = "chrome"
 		}
+		// dest must be host:port
+		if !strings.Contains(dest, ":") {
+			dest = dest + ":443"
+		}
+		// server-side realitySettings must NOT include client-only fields (fingerprint/pbk)
 		stream["realitySettings"] = map[string]any{
 			"show":        false,
 			"dest":        dest,
@@ -466,9 +471,8 @@ func (s *ServerApp) composeInboundStream(body *inboundForm) (map[string]any, err
 			"serverNames": []string{sni},
 			"privateKey":  priv,
 			"shortIds":    []string{shortID, ""},
-			"fingerprint": fp,
 		}
-		// store public key for share links
+		// store public key + fingerprint for share links only
 		if body.Settings == nil {
 			body.Settings = map[string]any{}
 		}
@@ -481,6 +485,7 @@ func (s *ServerApp) composeInboundStream(body *inboundForm) (map[string]any, err
 		}
 		meta["publicKey"] = pub
 		meta["shortId"] = shortID
+		meta["fingerprint"] = fp
 		body.Settings["bpanelMeta"] = meta
 		delete(body.Settings, "xpanelMeta")
 
