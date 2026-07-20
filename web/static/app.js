@@ -62,6 +62,7 @@ const PAGE_META = {
   nodes: { title: "外部节点", sub: "导入其它面板的分享链接" },
   certs: { title: "证书", sub: "申请、上传并下发到 Agent" },
   nginx: { title: "Nginx", sub: "按服务器维护配置草稿" },
+  logs: { title: "运行日志", sub: "节点 Xray / Agent 输出与操作审计" },
   traffic: { title: "流量统计", sub: "用量汇总与每日明细" },
   speed: { title: "连通测速", sub: "从主控探测 TCP / TLS 可达性" },
   links: { title: "分享链接", sub: "一键复制或扫码导入客户端" },
@@ -505,11 +506,14 @@ function switchTab(name) {
     nodes: refreshExt,
     certs: async () => { await fillServerSelects(); await refreshCerts(); },
     nginx: async () => { await fillServerSelects(); },
+    logs: refreshLogsPage,
     traffic: refreshTraffic,
     speed: () => Promise.resolve(),
     links: refreshLinks,
     settings: refreshSettings,
   };
+  // stop logs auto-refresh when leaving page
+  if (name !== "logs") stopLogsAutoRefresh();
   if (loaders[name]) loaders[name]().catch((e) => toast(e.message, "err"));
 }
 
@@ -846,6 +850,146 @@ async function refreshServers() {
 // —— 服务器日志 / Xray 版本 ——
 state._logServerId = "";
 state._xrayVersions = null;
+state._logsPageServerId = "";
+state._logsAutoTimer = null;
+state._logsOverview = null;
+
+function fmtUnix(ts) {
+  if (!ts) return "—";
+  const d = new Date(Number(ts) * 1000);
+  if (Number.isNaN(d.getTime())) return "—";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function stopLogsAutoRefresh() {
+  if (state._logsAutoTimer) {
+    clearInterval(state._logsAutoTimer);
+    state._logsAutoTimer = null;
+  }
+}
+
+function startLogsAutoRefresh() {
+  stopLogsAutoRefresh();
+  if (!$("#logs-auto")?.checked) return;
+  state._logsAutoTimer = setInterval(() => {
+    if (state.currentTab !== "logs") return;
+    refreshLogsPage({ quiet: true }).catch(() => {});
+  }, 8000);
+}
+
+async function refreshLogsPage(opts = {}) {
+  const quiet = !!opts.quiet;
+  try {
+    const data = await api("/api/logs");
+    state._logsOverview = data;
+    renderLogsServerList(data.servers || []);
+    renderAuditList(data.audit || []);
+    const sid = state._logsPageServerId || (data.servers?.[0]?.id || "");
+    if (sid) {
+      state._logsPageServerId = sid;
+      await loadLogsPageBody(sid, { quiet });
+    } else if ($("#logs-view-body")) {
+      $("#logs-view-body").textContent = "暂无服务器。请先在「服务器」页接入 Agent。";
+    }
+    startLogsAutoRefresh();
+  } catch (e) {
+    if (!quiet) toast(e.message, "err");
+    throw e;
+  }
+}
+
+function renderLogsServerList(list) {
+  const box = $("#logs-server-list");
+  if (!box) return;
+  if (!list.length) {
+    box.innerHTML = `<div class="dash-empty">暂无服务器</div>`;
+    return;
+  }
+  box.innerHTML = list.map((s) => {
+    const on = s.online ? "on" : (s.status === "pending" ? "pending" : "off");
+    const label = s.online ? "在线" : (s.status === "pending" ? "待装" : "离线");
+    const active = s.id === state._logsPageServerId ? " active" : "";
+    const xray = s.xray_running ? "Xray 运行" : "Xray 停";
+    const n = s.log_lines || 0;
+    return `<button type="button" class="logs-srv-item${active}" data-id="${s.id}">
+      <span class="ls-name"><span class="dot ${on}"></span>${escapeHtml(s.name)} <span class="chip ${on}">${label}</span></span>
+      <span class="ls-meta">${xray}${s.xray_version ? " · v" + escapeHtml(String(s.xray_version).replace(/^v/, "")) : ""} · 缓存 ${n} 行</span>
+      ${s.agent_error ? `<span class="ls-meta err-line">${escapeHtml(String(s.agent_error).slice(0, 80))}</span>` : ""}
+    </button>`;
+  }).join("");
+  box.onclick = (e) => {
+    const btn = e.target.closest("button[data-id]");
+    if (!btn) return;
+    state._logsPageServerId = btn.dataset.id;
+    renderLogsServerList(state._logsOverview?.servers || list);
+    loadLogsPageBody(btn.dataset.id).catch((err) => toast(err.message, "err"));
+  };
+}
+
+function renderAuditList(list) {
+  const box = $("#logs-audit-list");
+  if (!box) return;
+  if (!list.length) {
+    box.innerHTML = `<div class="dash-empty">暂无审计记录</div>`;
+    return;
+  }
+  box.innerHTML = list.map((a) => `
+    <div class="item">
+      <div class="item-main">
+        <div class="item-title">
+          <strong>${escapeHtml(a.action || "")}</strong>
+          <span class="chip">${escapeHtml(a.actor || "system")}</span>
+        </div>
+        <div class="meta">${escapeHtml(a.detail || "")}</div>
+      </div>
+      <span class="audit-time">${fmtUnix(a.created_at)}</span>
+    </div>`).join("");
+}
+
+async function loadLogsPageBody(id, opts = {}) {
+  const quiet = !!opts.quiet;
+  const body = $("#logs-view-body");
+  if (!quiet && body) body.textContent = "加载中…";
+  try {
+    const d = await api("/api/servers/" + id + "/logs?lines=400");
+    const lines = d.lines || [];
+    if (body) {
+      body.textContent = lines.length ? lines.join("\n") : "（空）";
+      if (!quiet) body.scrollTop = body.scrollHeight;
+    }
+    const srv = (state._logsOverview?.servers || []).find((s) => s.id === id);
+    if ($("#logs-view-title")) $("#logs-view-title").textContent = (d.name || srv?.name || "节点") + " · 日志";
+    if ($("#logs-view-sub")) {
+      const online = d.online ? "在线" : "离线";
+      const run = d.xray_running ? "Xray 运行中" : "Xray 未运行";
+      const ver = d.xray_version ? ("v" + String(d.xray_version).replace(/^v/, "")) : "版本未知";
+      const av = d.agent_version ? ("Agent v" + d.agent_version) : "Agent ?";
+      $("#logs-view-sub").textContent = `${online} · ${run} · ${ver} · ${av} · ${d.count || lines.length} 行缓存`;
+    }
+    return d;
+  } catch (e) {
+    if (body) body.textContent = "加载失败: " + e.message;
+    throw e;
+  }
+}
+
+$("#btn-logs-refresh") && ($("#btn-logs-refresh").onclick = () => {
+  refreshLogsPage().catch((e) => toast(e.message, "err"));
+});
+$("#logs-auto") && ($("#logs-auto").onchange = () => {
+  if ($("#logs-auto").checked) startLogsAutoRefresh();
+  else stopLogsAutoRefresh();
+});
+$("#btn-logs-copy") && ($("#btn-logs-copy").onclick = () => {
+  copyText($("#logs-view-body")?.textContent || "").then(() => toast("已复制", "ok", 1200)).catch((e) => toast(e.message, "err"));
+});
+$("#btn-logs-open-modal") && ($("#btn-logs-open-modal").onclick = () => {
+  const id = state._logsPageServerId;
+  if (!id) return toast("请先选择服务器", "warn");
+  const srv = (state._logsOverview?.servers || []).find((s) => s.id === id);
+  openServerLogs(id, srv?.name || "");
+});
 
 async function loadXrayVersionOptions(current) {
   const sel = $("#log-xray-ver");

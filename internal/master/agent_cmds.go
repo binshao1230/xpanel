@@ -84,6 +84,22 @@ func (r *agentRuntime) GetLogs(serverID string, n int) []string {
 	return out
 }
 
+func (r *agentRuntime) LogCount(serverID string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.logs[serverID])
+}
+
+func (r *agentRuntime) LogMeta() map[string]int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m := make(map[string]int, len(r.logs))
+	for id, lines := range r.logs {
+		m[id] = len(lines)
+	}
+	return m
+}
+
 // —— GitHub Xray releases (cached) ——
 
 type xrayReleaseCache struct {
@@ -197,27 +213,101 @@ func (s *ServerApp) handleServerLogs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	var name, xver string
-	var xrayRun int
-	_ = s.db.QueryRow(`SELECT name, COALESCE(xray_version,''), COALESCE(xray_running,0) FROM servers WHERE id=?`, id).
-		Scan(&name, &xver, &xrayRun)
-	if name == "" {
-		// check exists
-		var cnt int
-		_ = s.db.QueryRow(`SELECT COUNT(1) FROM servers WHERE id=?`, id).Scan(&cnt)
-		if cnt == 0 {
-			writeJSON(w, 404, map[string]string{"error": "not found"})
-			return
-		}
+	var name, xver, agentVer, agentErr, status string
+	var xrayRun, lastSeen int64
+	err := s.db.QueryRow(`SELECT name, COALESCE(xray_version,''), COALESCE(xray_running,0), COALESCE(agent_version,''), COALESCE(agent_error,''), COALESCE(status,''), COALESCE(last_seen,0) FROM servers WHERE id=?`, id).
+		Scan(&name, &xver, &xrayRun, &agentVer, &agentErr, &status, &lastSeen)
+	if err != nil {
+		writeJSON(w, 404, map[string]string{"error": "not found"})
+		return
 	}
 	lines := s.rt.GetLogs(id, n)
+	online := lastSeen > 0 && nowUnix()-lastSeen < 45
+	if s.hub != nil && s.hub.Online(id) {
+		online = true
+	}
+	if len(lines) == 0 {
+		// helpful placeholders so UI is never a blank void
+		lines = []string{
+			"（主控尚未收到该节点日志）",
+			"请确认：",
+			"1) Agent 版本 ≥ 0.6.9 且在线",
+			"2) 等待一次心跳（约 15 秒）",
+			"3) 服务器页可查看 Agent 异常信息",
+		}
+		if agentErr != "" {
+			lines = append(lines, "agent_error: "+agentErr)
+		}
+	}
 	writeJSON(w, 200, map[string]any{
-		"server_id":    id,
-		"name":         name,
-		"xray_version": xver,
-		"xray_running": xrayRun == 1,
-		"lines":        lines,
-		"count":        len(lines),
+		"server_id":     id,
+		"name":          name,
+		"xray_version":  xver,
+		"xray_running":  xrayRun == 1,
+		"agent_version": agentVer,
+		"agent_error":   agentErr,
+		"online":        online,
+		"status":        status,
+		"last_seen":     lastSeen,
+		"lines":         lines,
+		"count":         s.rt.LogCount(id),
+		"updated_hint":  "Agent 心跳约每 15s 上报日志",
+	})
+}
+
+// handleLogsOverview lists all servers with cached log counts for the Logs page.
+func (s *ServerApp) handleLogsOverview(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(`SELECT id,name,status,last_seen,COALESCE(xray_running,0),COALESCE(xray_version,''),COALESCE(agent_version,''),COALESCE(agent_error,''),COALESCE(public_ip,''),COALESCE(domain,'') FROM servers ORDER BY name COLLATE NOCASE`)
+	if err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	meta := s.rt.LogMeta()
+	now := nowUnix()
+	list := []map[string]any{}
+	for rows.Next() {
+		var id, name, status, xver, aver, aerr, ip, domain string
+		var lastSeen int64
+		var xrun int
+		if rows.Scan(&id, &name, &status, &lastSeen, &xrun, &xver, &aver, &aerr, &ip, &domain) != nil {
+			continue
+		}
+		online := lastSeen > 0 && now-lastSeen < 45
+		if s.hub != nil && s.hub.Online(id) {
+			online = true
+			status = "online"
+		} else if online {
+			status = "online"
+		} else if lastSeen > 0 {
+			status = "offline"
+		}
+		list = append(list, map[string]any{
+			"id": id, "name": name, "status": status, "online": online,
+			"xray_running": xrun == 1, "xray_version": xver,
+			"agent_version": aver, "agent_error": aerr,
+			"public_ip": ip, "domain": domain,
+			"log_lines": meta[id], "last_seen": lastSeen,
+		})
+	}
+	// audit recent
+	audit := []map[string]any{}
+	arows, err := s.db.Query(`SELECT id,actor,action,detail,created_at FROM audit_logs ORDER BY id DESC LIMIT 80`)
+	if err == nil {
+		defer arows.Close()
+		for arows.Next() {
+			var id, ca int64
+			var actor, action, detail string
+			if arows.Scan(&id, &actor, &action, &detail, &ca) == nil {
+				audit = append(audit, map[string]any{
+					"id": id, "actor": actor, "action": action, "detail": detail, "created_at": ca,
+				})
+			}
+		}
+	}
+	writeJSON(w, 200, map[string]any{
+		"servers": list,
+		"audit":   audit,
 	})
 }
 

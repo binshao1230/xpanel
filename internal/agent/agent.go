@@ -45,6 +45,9 @@ type Agent struct {
 	lastApplyErr  string
 	cachedXrayVer string
 	cachedVerAt   time.Time
+	// agentLog is a ring buffer of agent-side events (always reported).
+	agentLog []string
+	maxALog  int
 }
 
 func New(cfg Config) *Agent {
@@ -66,12 +69,86 @@ func New(cfg Config) *Agent {
 		client:    cfg.HTTPClient,
 		startedAt: time.Now(),
 		stopCh:    make(chan struct{}),
+		maxALog:   200,
+		agentLog:  make([]string, 0, 32),
 	}
 	if !cfg.DisableXray {
 		a.xray = xrayproc.New(bin, cfg.XrayConfigPath)
 		log.Printf("xray binary: %s (available=%v)", bin, a.xray.Available())
+		a.pushAgentLog(fmt.Sprintf("xray binary: %s available=%v", bin, a.xray.Available()))
+	} else {
+		a.pushAgentLog("xray process management disabled")
 	}
+	a.pushAgentLog("agent started version=" + version.Version)
 	return a
+}
+
+func (a *Agent) pushAgentLog(msg string) {
+	if msg == "" {
+		return
+	}
+	line := time.Now().Format("15:04:05") + " [agent] " + msg
+	a.mu.Lock()
+	a.agentLog = append(a.agentLog, line)
+	if a.maxALog <= 0 {
+		a.maxALog = 200
+	}
+	if len(a.agentLog) > a.maxALog {
+		a.agentLog = a.agentLog[len(a.agentLog)-a.maxALog:]
+	}
+	a.mu.Unlock()
+	if a.xray != nil {
+		a.xray.AppendLog(line)
+	}
+}
+
+func (a *Agent) collectLogTail(n int) []string {
+	if n <= 0 {
+		n = 200
+	}
+	var xrayLines []string
+	running := false
+	bin := ""
+	ver := ""
+	if a.xray != nil {
+		running = a.xray.IsRunning()
+		bin = a.xray.Bin()
+		ver = a.xrayVersion()
+		xrayLines = a.xray.Logs(n)
+	}
+	a.mu.Lock()
+	cfgVer := a.configVersion
+	lastErr := a.lastApplyErr
+	agentLines := append([]string{}, a.agentLog...)
+	uptime := int64(time.Since(a.startedAt).Seconds())
+	a.mu.Unlock()
+
+	// always prefix a status block so panel is never empty when agent is online
+	head := []string{
+		fmt.Sprintf("---- agent %s uptime=%ds config_v=%d ----", version.Version, uptime, cfgVer),
+		fmt.Sprintf("xray running=%v version=%s bin=%s", running, ver, bin),
+	}
+	if lastErr != "" {
+		head = append(head, "last_error: "+lastErr)
+	}
+	// merge: status + agent events + xray process stdout/stderr
+	out := make([]string, 0, len(head)+len(agentLines)+len(xrayLines))
+	out = append(out, head...)
+	// avoid duplicating agent lines already injected into xray log buffer
+	if len(xrayLines) > 0 {
+		out = append(out, "---- xray process ----")
+		out = append(out, xrayLines...)
+	} else {
+		out = append(out, "---- agent events ----")
+		out = append(out, agentLines...)
+		if len(agentLines) == 0 {
+			out = append(out, "(no process output yet — apply config or restart xray)")
+		}
+	}
+	if len(out) > n {
+		out = out[len(out)-n:]
+	}
+	return out
 }
 
 func (a *Agent) Run() error {
@@ -278,13 +355,12 @@ func (a *Agent) heartbeat() error {
 	running := false
 	bin := ""
 	ver := ""
-	var logs []string
 	if a.xray != nil {
 		running = a.xray.IsRunning()
 		bin = a.xray.Bin()
 		ver = a.xrayVersion()
-		logs = a.xray.Logs(120)
 	}
+	logs := a.collectLogTail(200)
 	traf, users := queryXrayStats(bin, protocol.DefaultAPIPort)
 	a.mu.Lock()
 	req := protocol.HeartbeatRequest{
@@ -356,15 +432,19 @@ func (a *Agent) pullAndApply() error {
 			_ = writeFileAtomic(a.cfg.XrayConfigPath+".bad.json", raw)
 			_ = a.saveState()
 			log.Printf("apply xray FAILED (will retry): %v", err)
+			a.pushAgentLog("apply FAILED: " + err.Error())
 			return fmt.Errorf("apply xray: %w", err)
 		}
 		log.Printf("xray running=%v config version=%d certs=%d checksum=%s",
 			a.xray.IsRunning(), bundle.Version, len(bundle.Certs), bundle.Checksum)
+		a.pushAgentLog(fmt.Sprintf("applied config v%d xray_running=%v certs=%d",
+			bundle.Version, a.xray.IsRunning(), len(bundle.Certs)))
 	} else {
 		if err := writeFileAtomic(a.cfg.XrayConfigPath, raw); err != nil {
 			return err
 		}
 		log.Printf("wrote xray config only version=%d certs=%d", bundle.Version, len(bundle.Certs))
+		a.pushAgentLog(fmt.Sprintf("wrote config only v%d (xray binary missing)", bundle.Version))
 	}
 
 	a.mu.Lock()

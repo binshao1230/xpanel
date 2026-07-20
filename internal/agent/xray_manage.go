@@ -75,10 +75,7 @@ func (a *Agent) handleCommand(cmd string) {
 }
 
 func (a *Agent) noteLog(src, msg string) {
-	line := fmt.Sprintf("[%s] %s", src, msg)
-	if a.xray != nil {
-		a.xray.AppendLog(line)
-	}
+	a.pushAgentLog(src + ": " + msg)
 }
 
 func (a *Agent) xrayVersion() string {

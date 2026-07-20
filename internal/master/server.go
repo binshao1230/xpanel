@@ -102,6 +102,7 @@ func (s *ServerApp) routes() {
 	s.mux.HandleFunc("DELETE /api/servers/{id}", s.adminOnly(s.handleDeleteServer))
 	s.mux.HandleFunc("POST /api/servers/{id}/bump-config", s.adminOnly(s.handleBumpConfig))
 	s.mux.HandleFunc("GET /api/servers/{id}/logs", s.adminOnly(s.handleServerLogs))
+	s.mux.HandleFunc("GET /api/logs", s.adminOnly(s.handleLogsOverview))
 	s.mux.HandleFunc("POST /api/servers/{id}/xray/install", s.adminOnly(s.handleInstallXray))
 	s.mux.HandleFunc("POST /api/servers/{id}/xray/restart", s.adminOnly(s.handleRestartXray))
 	s.mux.HandleFunc("GET /api/xray/versions", s.adminOnly(s.handleXrayVersions))

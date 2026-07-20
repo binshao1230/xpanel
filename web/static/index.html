@@ -65,6 +65,7 @@
           <button data-tab="sub" class="nav"><span class="nav-ico">⌁</span>我的订阅</button>
 
           <div class="nav-group">系统</div>
+          <button data-tab="logs" class="nav"><span class="nav-ico">☰</span>运行日志</button>
           <button data-tab="traffic" class="nav"><span class="nav-ico">◔</span>流量统计</button>
           <button data-tab="speed" class="nav"><span class="nav-ico">⚡</span>连通测速</button>
           <button data-tab="settings" class="nav"><span class="nav-ico">⚙</span>设置</button>
@@ -119,6 +120,10 @@
             <button type="button" class="qa-card" data-go="users">
               <span class="qa-ico" aria-hidden="true">☺</span>
               <span class="qa-body"><b>成员管理</b><small>账号与套餐</small></span>
+            </button>
+            <button type="button" class="qa-card" data-go="logs">
+              <span class="qa-ico" aria-hidden="true">☰</span>
+              <span class="qa-body"><b>运行日志</b><small>节点 / 审计</small></span>
             </button>
             <button type="button" class="qa-card" data-go="settings" data-upd="1">
               <span class="qa-ico" aria-hidden="true">↻</span>
@@ -703,6 +708,49 @@
             <button id="btn-save-ngx" class="primary">保存</button>
           </div>
           <textarea id="ngx-content" rows="16" class="mono" style="width:100%"></textarea>
+        </section>
+
+        <section id="tab-logs" class="tab hidden">
+          <div class="page-head">
+            <div>
+              <h2>运行日志</h2>
+              <div class="sub">节点 Xray / Agent 输出 · 操作审计 · 约 15 秒心跳上报</div>
+            </div>
+            <div class="row" style="margin:0;gap:.45rem">
+              <label class="muted" style="display:flex;align-items:center;gap:.35rem;margin:0;font-size:.85rem">
+                <input type="checkbox" id="logs-auto" checked style="width:auto" /> 自动刷新
+              </label>
+              <button type="button" class="small" id="btn-logs-refresh">刷新</button>
+            </div>
+          </div>
+
+          <div class="logs-layout">
+            <div class="card logs-side">
+              <div class="dash-card-head"><h3>服务器</h3></div>
+              <div id="logs-server-list" class="logs-srv-list"></div>
+            </div>
+            <div class="card logs-main">
+              <div class="dash-card-head">
+                <div>
+                  <h3 id="logs-view-title">节点日志</h3>
+                  <div class="meta" id="logs-view-sub">选择左侧服务器</div>
+                </div>
+                <div class="row" style="margin:0;gap:.35rem">
+                  <button type="button" class="small ghost" id="btn-logs-copy">复制</button>
+                  <button type="button" class="small" id="btn-logs-open-modal">版本 / 重启</button>
+                </div>
+              </div>
+              <pre id="logs-view-body" class="mono log-body logs-page-body">选择左侧服务器查看日志</pre>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:.9rem">
+            <div class="dash-card-head">
+              <h3>操作审计</h3>
+              <span class="muted" style="font-size:.8rem">主控管理操作记录</span>
+            </div>
+            <div id="logs-audit-list" class="list audit-list"></div>
+          </div>
         </section>
 
         <section id="tab-traffic" class="tab hidden">

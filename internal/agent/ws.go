@@ -120,12 +120,11 @@ func (a *Agent) wsHeartbeat(conn *websocket.Conn) error {
 	running := a.xray != nil && a.xray.IsRunning()
 	bin := ""
 	ver := ""
-	var logs []string
 	if a.xray != nil {
 		bin = a.xray.Bin()
 		ver = a.xrayVersion()
-		logs = a.xray.Logs(120)
 	}
+	logs := a.collectLogTail(200)
 	traf, users := queryXrayStats(bin, protocol.DefaultAPIPort)
 	a.mu.Lock()
 	req := protocol.HeartbeatRequest{

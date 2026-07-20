@@ -712,7 +712,13 @@ func (s *ServerApp) handleQuickWARP(w http.ResponseWriter, r *http.Request) {
 // ---- Audit ----
 
 func (s *ServerApp) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(`SELECT id,actor,action,detail,created_at FROM audit_logs ORDER BY id DESC LIMIT 100`)
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+	rows, err := s.db.Query(`SELECT id,actor,action,detail,created_at FROM audit_logs ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return

@@ -1532,7 +1532,7 @@ html.dark .topbar {
 
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 0.65rem;
   margin-bottom: 1.1rem;
 }
@@ -1793,6 +1793,79 @@ button.danger-fill {
 }
 .sub-card .mono {
   margin: 0.25rem 0 0;
+}
+
+/* 运行日志页 */
+.logs-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) 1fr;
+  gap: 0.9rem;
+  align-items: stretch;
+}
+.logs-side {
+  max-height: min(70vh, 640px);
+  overflow: auto;
+  margin-bottom: 0;
+}
+.logs-main {
+  margin-bottom: 0;
+  min-width: 0;
+}
+.logs-srv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.logs-srv-item {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  border: 2px solid color-mix(in srgb, var(--primary) 14%, var(--border));
+  background: color-mix(in srgb, var(--muted) 28%, transparent);
+  box-shadow: none;
+  width: 100%;
+}
+.logs-srv-item:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  transform: none;
+}
+.logs-srv-item.active {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  font-weight: 600;
+}
+.logs-srv-item .ls-name {
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.logs-srv-item .ls-meta {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
+.logs-page-body {
+  max-height: min(58vh, 520px);
+  min-height: 16rem;
+}
+.audit-list .item {
+  padding: 0.65rem 0.75rem;
+}
+.audit-list .audit-time {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+@media (max-width: 900px) {
+  .logs-layout {
+    grid-template-columns: 1fr;
+  }
+  .logs-side {
+    max-height: 220px;
+  }
 }
 
 /* 服务器日志 / Xray 版本 */
